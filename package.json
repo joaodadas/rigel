@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "portless rigel next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
+    "@supabase/supabase-js": "^2.102.1",
     "@tanstack/react-table": "^8.21.3",
     "better-auth": "^1.6.1",
     "class-variance-authority": "^0.7.1",
