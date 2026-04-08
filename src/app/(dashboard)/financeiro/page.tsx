@@ -1,3 +1,10 @@
 export default function FinanceiroPage() {
-  return <h1 className="text-2xl font-bold">Dashboard Financeiro</h1>;
+  return (
+    <div>
+      <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Painel financeiro
+      </p>
+    </div>
+  );
 }
