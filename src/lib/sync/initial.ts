@@ -1,18 +1,9 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServer } from "@/lib/supabase/client";
-import { vhsysFetchAll } from "@/lib/vhsys/client";
-import { ENDPOINTS } from "@/lib/vhsys/endpoints";
+import { vhsysGet } from "@/lib/vhsys/client";
+import { ENDPOINTS, MAX_PAGE_SIZE } from "@/lib/vhsys/endpoints";
 import { cacheSet, CACHE_KEYS } from "@/lib/redis/client";
-import type {
-  VHSysVendedor,
-  VHSysCliente,
-  VHSysProduto,
-  VHSysPedido,
-  VHSysContaPagar,
-  VHSysContaReceber,
-} from "@/lib/vhsys/types";
-
-const BATCH_SIZE = 500;
+import type { VHSysResponse } from "@/lib/vhsys/types";
 
 // Only keep fields that exist in our Supabase tables
 const TABLE_FIELDS: Record<string, string[]> = {
@@ -34,23 +25,39 @@ function pickFields(item: Record<string, unknown>, fields: string[]): Record<str
   return result;
 }
 
-async function syncEntity<T extends object>(
+// Stream sync: fetch page -> upsert -> next page (no memory accumulation)
+async function syncEntity(
   supabase: SupabaseClient,
   entity: string,
   endpoint: string,
   primaryKey: string
-): Promise<T[]> {
+): Promise<number> {
   const start = Date.now();
+  const fields = TABLE_FIELDS[entity];
+  let offset = 0;
+  let total = Infinity;
+  let synced = 0;
+
   console.log(`[sync] Starting ${entity}...`);
 
-  const items = await vhsysFetchAll<T>(endpoint);
-  console.log(`[sync] Fetched ${items.length} ${entity}`);
+  while (offset < total) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await vhsysGet<any>(endpoint, {
+      limit: String(MAX_PAGE_SIZE),
+      offset: String(offset),
+      lixeira: "Nao",
+    });
 
-  const fields = TABLE_FIELDS[entity];
+    if (res.paging) {
+      total = res.paging.total;
+    }
 
-  for (let i = 0; i < items.length; i += BATCH_SIZE) {
-    const batch = items.slice(i, i + BATCH_SIZE).map((item) => ({
-      ...(fields ? pickFields(item as unknown as Record<string, unknown>, fields) : item),
+    const rawData = res.data;
+    const items: Record<string, unknown>[] = Array.isArray(rawData) ? rawData : [];
+    if (items.length === 0) break;
+
+    const batch = items.map((item) => ({
+      ...(fields ? pickFields(item, fields) : item),
       synced_at: new Date().toISOString(),
     }));
 
@@ -59,22 +66,31 @@ async function syncEntity<T extends object>(
       .upsert(batch, { onConflict: primaryKey });
 
     if (error) {
-      console.error(`[sync] Error upserting ${entity} batch ${i}:`, error);
+      console.error(`[sync] Error upserting ${entity} at offset ${offset}:`, error);
       throw error;
+    }
+
+    synced += items.length;
+    offset += MAX_PAGE_SIZE;
+    console.log(`[sync] ${entity}: ${synced}/${total} synced`);
+
+    // Small delay to avoid rate limiting
+    if (offset < total) {
+      await new Promise((r) => setTimeout(r, 100));
     }
   }
 
   const duration = Date.now() - start;
-  console.log(`[sync] ${entity} done: ${items.length} records in ${duration}ms`);
+  console.log(`[sync] ${entity} done: ${synced} records in ${duration}ms`);
 
   await supabase.from("sync_log").insert({
     entity,
-    records_synced: items.length,
+    records_synced: synced,
     status: "success",
     duration_ms: duration,
   });
 
-  return items;
+  return synced;
 }
 
 export async function runInitialSync(): Promise<Record<string, number>> {
@@ -83,62 +99,14 @@ export async function runInitialSync(): Promise<Record<string, number>> {
 
   try {
     // Sync in order: entities without FK first
-    const vendedores = await syncEntity<VHSysVendedor>(
-      supabase,
-      "vendedores",
-      ENDPOINTS.vendedores,
-      "id_vendedor"
-    );
-    results.vendedores = vendedores.length;
+    results.vendedores = await syncEntity(supabase, "vendedores", ENDPOINTS.vendedores, "id_vendedor");
+    results.clientes = await syncEntity(supabase, "clientes", ENDPOINTS.clientes, "id_cliente");
+    results.produtos = await syncEntity(supabase, "produtos", ENDPOINTS.produtos, "id_produto");
+    results.pedidos = await syncEntity(supabase, "pedidos", ENDPOINTS.pedidos, "id_pedido");
+    results.contas_pagar = await syncEntity(supabase, "contas_pagar", ENDPOINTS.contasPagar, "id_conta_pag");
+    results.contas_receber = await syncEntity(supabase, "contas_receber", ENDPOINTS.contasReceber, "id_conta_rec");
 
-    const clientes = await syncEntity<VHSysCliente>(
-      supabase,
-      "clientes",
-      ENDPOINTS.clientes,
-      "id_cliente"
-    );
-    results.clientes = clientes.length;
-
-    const produtos = await syncEntity<VHSysProduto>(
-      supabase,
-      "produtos",
-      ENDPOINTS.produtos,
-      "id_produto"
-    );
-    results.produtos = produtos.length;
-
-    const pedidos = await syncEntity<VHSysPedido>(
-      supabase,
-      "pedidos",
-      ENDPOINTS.pedidos,
-      "id_pedido"
-    );
-    results.pedidos = pedidos.length;
-
-    const contasPagar = await syncEntity<VHSysContaPagar>(
-      supabase,
-      "contas_pagar",
-      ENDPOINTS.contasPagar,
-      "id_conta_pag"
-    );
-    results.contas_pagar = contasPagar.length;
-
-    const contasReceber = await syncEntity<VHSysContaReceber>(
-      supabase,
-      "contas_receber",
-      ENDPOINTS.contasReceber,
-      "id_conta_rec"
-    );
-    results.contas_receber = contasReceber.length;
-
-    // Cache vendedores ativos in Redis (reuse already-fetched data)
-    const vendedoresAtivos = vendedores.filter(
-      (v) => v.situacao_vendedor === "Ativo"
-    );
-    await cacheSet(CACHE_KEYS.vendedoresAtivos, vendedoresAtivos);
-    console.log(
-      `[sync] Cached ${vendedoresAtivos.length} vendedores ativos in Redis`
-    );
+    console.log("[sync] All entities synced:", results);
   } catch (error) {
     // Log the failure to sync_log
     await supabase.from("sync_log").insert({
