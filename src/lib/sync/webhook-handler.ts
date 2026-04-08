@@ -1,0 +1,57 @@
+import { createSupabaseServer } from "@/lib/supabase/client";
+import { invalidateKPIs } from "@/lib/redis/client";
+
+type WebhookEvent = {
+  event: string;
+  data: Record<string, unknown>;
+};
+
+const ENTITY_MAP: Record<string, { table: string; pk: string }> = {
+  clientes: { table: "clientes", pk: "id_cliente" },
+  pedidos: { table: "pedidos", pk: "id_pedido" },
+  produtos: { table: "produtos", pk: "id_produto" },
+  "contas-pagar": { table: "contas_pagar", pk: "id_conta_pag" },
+  "contas-receber": { table: "contas_receber", pk: "id_conta_rec" },
+  "notas-fiscais": { table: "notas_fiscais", pk: "id_venda" },
+  orcamentos: { table: "orcamentos", pk: "id_orcamento" },
+  vendedores: { table: "vendedores", pk: "id_vendedor" },
+};
+
+export async function handleVHSysWebhook(payload: WebhookEvent) {
+  const supabase = createSupabaseServer();
+  const [entityKey, action] = payload.event.split(".");
+  const mapping = ENTITY_MAP[entityKey];
+
+  if (!mapping) {
+    console.warn(`[webhook] Unknown entity: ${entityKey}`);
+    return { handled: false };
+  }
+
+  const record = { ...payload.data, synced_at: new Date().toISOString() };
+
+  if (action === "delete") {
+    const pkValue = payload.data[mapping.pk];
+    await supabase
+      .from(mapping.table)
+      .update({ lixeira: "Sim", synced_at: new Date().toISOString() })
+      .eq(mapping.pk, pkValue);
+  } else {
+    await supabase
+      .from(mapping.table)
+      .upsert(record, { onConflict: mapping.pk });
+  }
+
+  // Update ultima_atividade for related client
+  if (["pedidos", "orcamentos", "notas-fiscais"].includes(entityKey)) {
+    const clientId = payload.data.id_cliente as number;
+    if (clientId) {
+      await supabase
+        .from("clientes")
+        .update({ ultima_atividade: new Date().toISOString() })
+        .eq("id_cliente", clientId);
+    }
+  }
+
+  await invalidateKPIs();
+  return { handled: true, entity: entityKey, action };
+}
