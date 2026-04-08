@@ -46,12 +46,13 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-sm shadow-lg">
-      <CardHeader className="text-center">
-        <CardTitle className="text-2xl font-bold text-wrap-balance">
+    <Card className="w-full max-w-sm shadow-[0_2px_8px_0_rgb(0_0_0/0.06),0_8px_24px_0_rgb(0_0_0/0.06)] dark:backdrop-blur-sm dark:bg-card/80 border border-border/50">
+      <CardHeader className="text-center pb-4">
+        <CardTitle className="text-3xl font-bold tracking-tighter text-wrap-balance">
           Rigel
         </CardTitle>
         <CardDescription>Entre com suas credenciais</CardDescription>
+        <div className="mt-4 h-px bg-border/60" />
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -65,7 +66,7 @@ export function LoginForm() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="h-10"
+              className="h-10 bg-muted/50"
             />
           </div>
 
@@ -79,7 +80,7 @@ export function LoginForm() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="h-10"
+              className="h-10 bg-muted/50"
             />
           </div>
 
@@ -92,7 +93,7 @@ export function LoginForm() {
           <Button
             type="submit"
             disabled={loading}
-            className="h-10 w-full active:scale-[0.96] transition-transform"
+            className="h-10 w-full bg-foreground text-background hover:bg-foreground/90 active:scale-[0.96] transition-transform"
           >
             {loading ? "Entrando..." : "Entrar"}
           </Button>

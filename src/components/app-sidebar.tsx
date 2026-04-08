@@ -21,7 +21,6 @@ import {
 } from "lucide-react"
 
 import { authClient } from "@/lib/auth-client"
-import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -154,11 +153,7 @@ function NavCollapsibleGroup({
                 <SidebarMenuSubButton
                   render={<Link href={item.url} />}
                   isActive={pathname === item.url}
-                  className={cn(
-                    "min-h-[40px]",
-                    pathname === item.url &&
-                      "bg-amber-500/10 text-amber-500 dark:bg-amber-500/10 dark:text-amber-400"
-                  )}
+                  className="min-h-[40px]"
                 >
                   <item.icon className="size-4" />
                   <span>{item.title}</span>
@@ -212,7 +207,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
               className="pointer-events-none"
               tooltip="Rigel"
             >
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-500 font-bold text-sm dark:bg-amber-500/20 dark:text-amber-400">
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-foreground text-background font-bold text-sm">
                 R
               </div>
               <div className="grid flex-1 text-left leading-tight">
@@ -255,11 +250,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                       render={<Link href={entry.url} />}
                       isActive={isActive}
                       tooltip={entry.title}
-                      className={cn(
-                        "min-h-[40px]",
-                        isActive &&
-                          "bg-amber-500/10 text-amber-500 dark:bg-amber-500/10 dark:text-amber-400"
-                      )}
+                      className="min-h-[40px]"
                     >
                       <entry.icon className="size-4" />
                       <span>{entry.title}</span>
@@ -289,7 +280,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                 }
               >
                 <Avatar size="sm">
-                  <AvatarFallback className="bg-amber-500/15 text-amber-600 text-[10px] font-semibold dark:bg-amber-500/20 dark:text-amber-400">
+                  <AvatarFallback className="bg-muted text-muted-foreground text-[10px] font-semibold">
                     {initials}
                   </AvatarFallback>
                 </Avatar>
@@ -314,7 +305,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
               >
                 <div className="flex items-center gap-2 px-2 py-2">
                   <Avatar size="sm">
-                    <AvatarFallback className="bg-amber-500/15 text-amber-600 text-[10px] font-semibold dark:bg-amber-500/20 dark:text-amber-400">
+                    <AvatarFallback className="bg-muted text-muted-foreground text-[10px] font-semibold">
                       {initials}
                     </AvatarFallback>
                   </Avatar>
