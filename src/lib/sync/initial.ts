@@ -19,7 +19,12 @@ function pickFields(item: Record<string, unknown>, fields: string[]): Record<str
   const result: Record<string, unknown> = {};
   for (const field of fields) {
     if (field in item) {
-      result[field] = item[field];
+      let value = item[field];
+      // VHSys uses "0000-00-00" for null dates - Postgres rejects this
+      if (typeof value === "string" && /^0000-00-00/.test(value)) {
+        value = null;
+      }
+      result[field] = value;
     }
   }
   return result;
