@@ -4,6 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table"
 import { ArrowUpDown } from "lucide-react"
 import type { OrcamentoRow } from "@/lib/queries/orcamentos"
 import { Badge } from "@/components/ui/badge"
+import { fixEncoding } from "@/lib/utils/text"
 
 function SortableHeader({
   column,
@@ -28,7 +29,7 @@ export const columns: ColumnDef<OrcamentoRow>[] = [
     accessorKey: "id_orcamento",
     header: ({ column }) => <SortableHeader column={column} label="#Orcamento" />,
     cell: ({ row }) => (
-      <span className="font-mono text-xs tabular-nums">
+      <span className="font-mono text-xs tabular-nums whitespace-nowrap">
         {row.getValue("id_orcamento")}
       </span>
     ),
@@ -36,18 +37,15 @@ export const columns: ColumnDef<OrcamentoRow>[] = [
   {
     accessorKey: "nome_cliente",
     header: ({ column }) => <SortableHeader column={column} label="Cliente" />,
-    cell: ({ row }) => (
-      <span className="font-medium">{row.getValue("nome_cliente")}</span>
-    ),
-  },
-  {
-    accessorKey: "vendedor_pedido",
-    header: ({ column }) => <SortableHeader column={column} label="Vendedor" />,
-    cell: ({ row }) => (
-      <span className="text-muted-foreground">
-        {row.getValue("vendedor_pedido") || "\u2014"}
-      </span>
-    ),
+    cell: ({ row }) => {
+      const raw = row.getValue("nome_cliente") as string | null
+      const text = fixEncoding(raw)
+      return (
+        <span className="max-w-[250px] truncate block font-medium whitespace-nowrap" title={text}>
+          {text}
+        </span>
+      )
+    },
   },
   {
     accessorKey: "valor_total_nota",
@@ -60,7 +58,7 @@ export const columns: ColumnDef<OrcamentoRow>[] = [
       const valor = row.getValue("valor_total_nota") as number | null
       if (valor == null) return <span className="text-muted-foreground text-right block">{"\u2014"}</span>
       return (
-        <span className="tabular-nums text-right block">
+        <span className="tabular-nums font-mono text-sm text-right block whitespace-nowrap">
           {valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
         </span>
       )
@@ -98,29 +96,7 @@ export const columns: ColumnDef<OrcamentoRow>[] = [
       try {
         const date = new Date(dateStr)
         return (
-          <span className="tabular-nums">
-            {date.toLocaleDateString("pt-BR", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "numeric",
-            })}
-          </span>
-        )
-      } catch {
-        return <span className="text-muted-foreground">{dateStr}</span>
-      }
-    },
-  },
-  {
-    accessorKey: "validade_orcamento",
-    header: ({ column }) => <SortableHeader column={column} label="Validade" />,
-    cell: ({ row }) => {
-      const dateStr = row.getValue("validade_orcamento") as string | null
-      if (!dateStr) return <span className="text-muted-foreground">{"\u2014"}</span>
-      try {
-        const date = new Date(dateStr)
-        return (
-          <span className="tabular-nums">
+          <span className="text-sm text-muted-foreground tabular-nums whitespace-nowrap">
             {date.toLocaleDateString("pt-BR", {
               day: "2-digit",
               month: "2-digit",

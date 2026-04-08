@@ -4,6 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table"
 import { ArrowUpDown } from "lucide-react"
 import type { ContaReceberRow } from "@/lib/queries/contas-receber"
 import { Badge } from "@/components/ui/badge"
+import { fixEncoding } from "@/lib/utils/text"
 
 function SortableHeader({
   column,
@@ -43,27 +44,28 @@ export const columns: ColumnDef<ContaReceberRow>[] = [
   {
     accessorKey: "nome_conta",
     header: ({ column }) => <SortableHeader column={column} label="Conta" />,
-    cell: ({ row }) => (
-      <span className="font-medium">{row.getValue("nome_conta")}</span>
-    ),
+    cell: ({ row }) => {
+      const raw = row.getValue("nome_conta") as string | null
+      const text = fixEncoding(raw)
+      return (
+        <span className="max-w-[200px] truncate block font-medium whitespace-nowrap" title={text}>
+          {text}
+        </span>
+      )
+    },
   },
   {
     accessorKey: "nome_cliente",
     header: ({ column }) => <SortableHeader column={column} label="Cliente" />,
-    cell: ({ row }) => (
-      <span className="text-muted-foreground">
-        {row.getValue("nome_cliente") || "\u2014"}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "categoria_rec",
-    header: ({ column }) => <SortableHeader column={column} label="Categoria" />,
-    cell: ({ row }) => (
-      <span className="text-muted-foreground text-sm">
-        {row.getValue("categoria_rec") || "\u2014"}
-      </span>
-    ),
+    cell: ({ row }) => {
+      const raw = row.getValue("nome_cliente") as string | null
+      const text = fixEncoding(raw)
+      return (
+        <span className="max-w-[200px] truncate block text-muted-foreground whitespace-nowrap" title={text}>
+          {text}
+        </span>
+      )
+    },
   },
   {
     accessorKey: "vencimento_rec",
@@ -75,7 +77,7 @@ export const columns: ColumnDef<ContaReceberRow>[] = [
       try {
         const date = new Date(dateStr)
         return (
-          <span className={`tabular-nums ${overdue ? "text-red-500 font-medium" : ""}`}>
+          <span className={`text-sm tabular-nums whitespace-nowrap ${overdue ? "text-red-500 font-medium" : "text-muted-foreground"}`}>
             {date.toLocaleDateString("pt-BR", {
               day: "2-digit",
               month: "2-digit",
@@ -96,21 +98,8 @@ export const columns: ColumnDef<ContaReceberRow>[] = [
       </div>
     ),
     cell: ({ row }) => (
-      <span className="tabular-nums text-right block">
+      <span className="tabular-nums font-mono text-sm text-right block whitespace-nowrap">
         {formatBRL(row.getValue("valor_rec"))}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "valor_pago",
-    header: ({ column }) => (
-      <div className="text-right">
-        <SortableHeader column={column} label="Pago" />
-      </div>
-    ),
-    cell: ({ row }) => (
-      <span className="tabular-nums text-right block">
-        {formatBRL(row.getValue("valor_pago"))}
       </span>
     ),
   },
@@ -128,14 +117,5 @@ export const columns: ColumnDef<ContaReceberRow>[] = [
       )
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
-  },
-  {
-    accessorKey: "forma_pagamento",
-    header: ({ column }) => <SortableHeader column={column} label="Pagamento" />,
-    cell: ({ row }) => (
-      <span className="text-sm text-muted-foreground">
-        {row.getValue("forma_pagamento") || "\u2014"}
-      </span>
-    ),
   },
 ]

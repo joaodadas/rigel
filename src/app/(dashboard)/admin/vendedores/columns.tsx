@@ -4,6 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table"
 import { ArrowUpDown } from "lucide-react"
 import type { VendedorRow } from "@/lib/queries/vendedores"
 import { Badge } from "@/components/ui/badge"
+import { fixEncoding } from "@/lib/utils/text"
 
 function SortableHeader({
   column,
@@ -27,18 +28,15 @@ export const columns: ColumnDef<VendedorRow>[] = [
   {
     accessorKey: "razao_vendedor",
     header: ({ column }) => <SortableHeader column={column} label="Nome" />,
-    cell: ({ row }) => (
-      <span className="font-medium">{row.getValue("razao_vendedor")}</span>
-    ),
-  },
-  {
-    accessorKey: "fantasia_vendedor",
-    header: ({ column }) => <SortableHeader column={column} label="Fantasia" />,
-    cell: ({ row }) => (
-      <span className="text-muted-foreground">
-        {row.getValue("fantasia_vendedor") || "\u2014"}
-      </span>
-    ),
+    cell: ({ row }) => {
+      const raw = row.getValue("razao_vendedor") as string | null
+      const text = fixEncoding(raw)
+      return (
+        <span className="max-w-[250px] truncate block font-medium whitespace-nowrap" title={text}>
+          {text}
+        </span>
+      )
+    },
   },
   {
     id: "localidade",
@@ -51,25 +49,22 @@ export const columns: ColumnDef<VendedorRow>[] = [
       return null
     },
     header: ({ column }) => <SortableHeader column={column} label="Cidade/UF" />,
-    cell: ({ getValue }) => (
-      <span>{(getValue() as string) || "\u2014"}</span>
-    ),
+    cell: ({ getValue }) => {
+      const raw = getValue() as string | null
+      const text = fixEncoding(raw)
+      return (
+        <span className="max-w-[180px] truncate block whitespace-nowrap" title={text}>
+          {text}
+        </span>
+      )
+    },
   },
   {
     accessorKey: "fone_vendedor",
     header: ({ column }) => <SortableHeader column={column} label="Telefone" />,
     cell: ({ row }) => (
-      <span className="tabular-nums">
+      <span className="max-w-[140px] text-sm tabular-nums whitespace-nowrap">
         {row.getValue("fone_vendedor") || "\u2014"}
-      </span>
-    ),
-  },
-  {
-    accessorKey: "email_vendedor",
-    header: ({ column }) => <SortableHeader column={column} label="Email" />,
-    cell: ({ row }) => (
-      <span className="text-muted-foreground">
-        {row.getValue("email_vendedor") || "\u2014"}
       </span>
     ),
   },
@@ -80,7 +75,7 @@ export const columns: ColumnDef<VendedorRow>[] = [
       const comissao = row.getValue("comissao_usuario") as number | null
       if (comissao == null) return <span className="text-muted-foreground">{"\u2014"}</span>
       return (
-        <span className="tabular-nums">
+        <span className="tabular-nums font-mono text-sm whitespace-nowrap">
           {comissao.toLocaleString("pt-BR", {
             minimumFractionDigits: 1,
             maximumFractionDigits: 2,

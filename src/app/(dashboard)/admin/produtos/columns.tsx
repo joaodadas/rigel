@@ -4,6 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table"
 import { ArrowUpDown } from "lucide-react"
 import type { ProdutoRow } from "@/lib/queries/produtos"
 import { Badge } from "@/components/ui/badge"
+import { fixEncoding } from "@/lib/utils/text"
 
 function SortableHeader({
   column,
@@ -28,7 +29,7 @@ export const columns: ColumnDef<ProdutoRow>[] = [
     accessorKey: "cod_produto",
     header: ({ column }) => <SortableHeader column={column} label="Codigo" />,
     cell: ({ row }) => (
-      <span className="font-mono text-xs tabular-nums">
+      <span className="font-mono text-xs tabular-nums whitespace-nowrap">
         {row.getValue("cod_produto") || "\u2014"}
       </span>
     ),
@@ -36,18 +37,15 @@ export const columns: ColumnDef<ProdutoRow>[] = [
   {
     accessorKey: "desc_produto",
     header: ({ column }) => <SortableHeader column={column} label="Produto" />,
-    cell: ({ row }) => (
-      <span className="font-medium">{row.getValue("desc_produto")}</span>
-    ),
-  },
-  {
-    accessorKey: "marca_produto",
-    header: ({ column }) => <SortableHeader column={column} label="Marca" />,
-    cell: ({ row }) => (
-      <span className="text-muted-foreground">
-        {row.getValue("marca_produto") || "\u2014"}
-      </span>
-    ),
+    cell: ({ row }) => {
+      const raw = row.getValue("desc_produto") as string | null
+      const text = fixEncoding(raw)
+      return (
+        <span className="max-w-[300px] truncate block font-medium whitespace-nowrap" title={text}>
+          {text}
+        </span>
+      )
+    },
   },
   {
     accessorKey: "estoque_produto",
@@ -59,18 +57,11 @@ export const columns: ColumnDef<ProdutoRow>[] = [
       if (estoque < 10) colorClass = "text-red-500"
       else if (estoque < 50) colorClass = "text-orange-500"
       return (
-        <span className={`tabular-nums ${colorClass}`}>
+        <span className={`tabular-nums font-mono text-sm ${colorClass}`}>
           {estoque}
         </span>
       )
     },
-  },
-  {
-    accessorKey: "unidade_produto",
-    header: ({ column }) => <SortableHeader column={column} label="Unidade" />,
-    cell: ({ row }) => (
-      <span>{row.getValue("unidade_produto") || "\u2014"}</span>
-    ),
   },
   {
     accessorKey: "valor_produto",
@@ -83,7 +74,7 @@ export const columns: ColumnDef<ProdutoRow>[] = [
       const valor = row.getValue("valor_produto") as number | null
       if (valor == null) return <span className="text-muted-foreground text-right block">{"\u2014"}</span>
       return (
-        <span className="tabular-nums text-right block">
+        <span className="tabular-nums font-mono text-sm text-right block whitespace-nowrap">
           {valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
         </span>
       )

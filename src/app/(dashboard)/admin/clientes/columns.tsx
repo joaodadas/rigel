@@ -4,6 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table"
 import { ArrowUpDown } from "lucide-react"
 import type { ClienteRow } from "@/lib/queries/clientes"
 import { Badge } from "@/components/ui/badge"
+import { fixEncoding } from "@/lib/utils/text"
 
 function SortableHeader({
   column,
@@ -27,24 +28,21 @@ export const columns: ColumnDef<ClienteRow>[] = [
   {
     accessorKey: "razao_cliente",
     header: ({ column }) => <SortableHeader column={column} label="Razao Social" />,
-    cell: ({ row }) => (
-      <span className="font-medium">{row.getValue("razao_cliente")}</span>
-    ),
-  },
-  {
-    accessorKey: "fantasia_cliente",
-    header: ({ column }) => <SortableHeader column={column} label="Fantasia" />,
-    cell: ({ row }) => (
-      <span className="text-muted-foreground">
-        {row.getValue("fantasia_cliente") || "\u2014"}
-      </span>
-    ),
+    cell: ({ row }) => {
+      const raw = row.getValue("razao_cliente") as string | null
+      const text = fixEncoding(raw)
+      return (
+        <span className="max-w-[250px] truncate block font-medium whitespace-nowrap" title={text}>
+          {text}
+        </span>
+      )
+    },
   },
   {
     accessorKey: "cnpj_cliente",
     header: ({ column }) => <SortableHeader column={column} label="CNPJ/CPF" />,
     cell: ({ row }) => (
-      <span className="font-mono text-xs tabular-nums">
+      <span className="max-w-[160px] font-mono text-xs tabular-nums whitespace-nowrap">
         {row.getValue("cnpj_cliente") || "\u2014"}
       </span>
     ),
@@ -60,15 +58,21 @@ export const columns: ColumnDef<ClienteRow>[] = [
       return null
     },
     header: ({ column }) => <SortableHeader column={column} label="Cidade/UF" />,
-    cell: ({ getValue }) => (
-      <span>{(getValue() as string) || "\u2014"}</span>
-    ),
+    cell: ({ getValue }) => {
+      const raw = getValue() as string | null
+      const text = fixEncoding(raw)
+      return (
+        <span className="max-w-[180px] truncate block whitespace-nowrap" title={text}>
+          {text}
+        </span>
+      )
+    },
   },
   {
     accessorKey: "fone_cliente",
     header: ({ column }) => <SortableHeader column={column} label="Telefone" />,
     cell: ({ row }) => (
-      <span className="tabular-nums">
+      <span className="max-w-[140px] text-sm tabular-nums whitespace-nowrap">
         {row.getValue("fone_cliente") || "\u2014"}
       </span>
     ),
@@ -85,27 +89,5 @@ export const columns: ColumnDef<ClienteRow>[] = [
       )
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
-  },
-  {
-    accessorKey: "data_cad_cliente",
-    header: ({ column }) => <SortableHeader column={column} label="Cadastro" />,
-    cell: ({ row }) => {
-      const dateStr = row.getValue("data_cad_cliente") as string | null
-      if (!dateStr) return <span className="text-muted-foreground">{"\u2014"}</span>
-      try {
-        const date = new Date(dateStr)
-        return (
-          <span className="tabular-nums">
-            {date.toLocaleDateString("pt-BR", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "numeric",
-            })}
-          </span>
-        )
-      } catch {
-        return <span className="text-muted-foreground">{dateStr}</span>
-      }
-    },
   },
 ]

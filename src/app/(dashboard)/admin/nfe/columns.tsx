@@ -4,6 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table"
 import { ArrowUpDown } from "lucide-react"
 import type { NotaFiscalRow } from "@/lib/queries/notas-fiscais"
 import { Badge } from "@/components/ui/badge"
+import { fixEncoding } from "@/lib/utils/text"
 
 function SortableHeader({
   column,
@@ -28,29 +29,23 @@ export const columns: ColumnDef<NotaFiscalRow>[] = [
     accessorKey: "id_venda",
     header: ({ column }) => <SortableHeader column={column} label="#NF-e" />,
     cell: ({ row }) => (
-      <span className="font-mono text-xs tabular-nums">
+      <span className="font-mono text-xs tabular-nums whitespace-nowrap">
         {row.getValue("id_venda")}
       </span>
     ),
   },
   {
-    accessorKey: "serie_nota",
-    header: ({ column }) => <SortableHeader column={column} label="Serie" />,
+    accessorKey: "nome_cliente",
+    header: ({ column }) => <SortableHeader column={column} label="Cliente" />,
     cell: ({ row }) => {
-      const serie = row.getValue("serie_nota") as number | null
+      const raw = row.getValue("nome_cliente") as string | null
+      const text = fixEncoding(raw)
       return (
-        <span className="font-mono text-xs tabular-nums">
-          {serie != null ? serie : "\u2014"}
+        <span className="max-w-[250px] truncate block font-medium whitespace-nowrap" title={text}>
+          {text}
         </span>
       )
     },
-  },
-  {
-    accessorKey: "nome_cliente",
-    header: ({ column }) => <SortableHeader column={column} label="Cliente" />,
-    cell: ({ row }) => (
-      <span className="font-medium">{row.getValue("nome_cliente")}</span>
-    ),
   },
   {
     accessorKey: "valor_total_nota",
@@ -63,7 +58,7 @@ export const columns: ColumnDef<NotaFiscalRow>[] = [
       const valor = row.getValue("valor_total_nota") as number | null
       if (valor == null) return <span className="text-muted-foreground text-right block">{"\u2014"}</span>
       return (
-        <span className="tabular-nums text-right block">
+        <span className="tabular-nums font-mono text-sm text-right block whitespace-nowrap">
           {valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
         </span>
       )
@@ -107,19 +102,6 @@ export const columns: ColumnDef<NotaFiscalRow>[] = [
     },
   },
   {
-    accessorKey: "nota_chave",
-    header: ({ column }) => <SortableHeader column={column} label="Chave" />,
-    cell: ({ row }) => {
-      const chave = row.getValue("nota_chave") as string | null
-      if (!chave) return <span className="text-muted-foreground">{"\u2014"}</span>
-      return (
-        <span className="font-mono text-xs text-muted-foreground" title={chave}>
-          {chave.length > 20 ? `${chave.slice(0, 20)}...` : chave}
-        </span>
-      )
-    },
-  },
-  {
     accessorKey: "data_pedido",
     header: ({ column }) => <SortableHeader column={column} label="Data" />,
     cell: ({ row }) => {
@@ -128,7 +110,7 @@ export const columns: ColumnDef<NotaFiscalRow>[] = [
       try {
         const date = new Date(dateStr)
         return (
-          <span className="tabular-nums">
+          <span className="text-sm text-muted-foreground tabular-nums whitespace-nowrap">
             {date.toLocaleDateString("pt-BR", {
               day: "2-digit",
               month: "2-digit",

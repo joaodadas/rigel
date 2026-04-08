@@ -4,6 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table"
 import { ArrowUpDown } from "lucide-react"
 import type { PedidoRow } from "@/lib/queries/pedidos"
 import { Badge } from "@/components/ui/badge"
+import { fixEncoding } from "@/lib/utils/text"
 
 function SortableHeader({
   column,
@@ -28,7 +29,7 @@ export const columns: ColumnDef<PedidoRow>[] = [
     accessorKey: "id_pedido",
     header: ({ column }) => <SortableHeader column={column} label="#Pedido" />,
     cell: ({ row }) => (
-      <span className="font-mono text-xs tabular-nums">
+      <span className="font-mono text-xs tabular-nums whitespace-nowrap">
         {row.getValue("id_pedido")}
       </span>
     ),
@@ -36,18 +37,15 @@ export const columns: ColumnDef<PedidoRow>[] = [
   {
     accessorKey: "nome_cliente",
     header: ({ column }) => <SortableHeader column={column} label="Cliente" />,
-    cell: ({ row }) => (
-      <span className="font-medium">{row.getValue("nome_cliente")}</span>
-    ),
-  },
-  {
-    accessorKey: "vendedor_pedido",
-    header: ({ column }) => <SortableHeader column={column} label="Vendedor" />,
-    cell: ({ row }) => (
-      <span className="text-muted-foreground">
-        {row.getValue("vendedor_pedido") || "\u2014"}
-      </span>
-    ),
+    cell: ({ row }) => {
+      const raw = row.getValue("nome_cliente") as string | null
+      const text = fixEncoding(raw)
+      return (
+        <span className="max-w-[250px] truncate block font-medium whitespace-nowrap" title={text}>
+          {text}
+        </span>
+      )
+    },
   },
   {
     accessorKey: "valor_total_nota",
@@ -60,7 +58,7 @@ export const columns: ColumnDef<PedidoRow>[] = [
       const valor = row.getValue("valor_total_nota") as number | null
       if (valor == null) return <span className="text-muted-foreground text-right block">{"\u2014"}</span>
       return (
-        <span className="tabular-nums text-right block">
+        <span className="tabular-nums font-mono text-sm text-right block whitespace-nowrap">
           {valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
         </span>
       )
@@ -98,7 +96,7 @@ export const columns: ColumnDef<PedidoRow>[] = [
       try {
         const date = new Date(dateStr)
         return (
-          <span className="tabular-nums">
+          <span className="text-sm text-muted-foreground tabular-nums whitespace-nowrap">
             {date.toLocaleDateString("pt-BR", {
               day: "2-digit",
               month: "2-digit",
