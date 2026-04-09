@@ -66,13 +66,33 @@ async function syncEntity(
       synced_at: new Date().toISOString(),
     }));
 
-    const { error } = await supabase
-      .from(entity)
-      .upsert(batch, { onConflict: primaryKey });
+    // Retry up to 3 times on connection errors
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { error } = await supabase
+        .from(entity)
+        .upsert(batch, { onConflict: primaryKey });
 
-    if (error) {
+      if (!error) {
+        lastError = null;
+        break;
+      }
+
+      lastError = error;
+      const msg = typeof error === "object" && error !== null && "message" in error ? (error as { message: string }).message : String(error);
+      if (msg.includes("fetch failed") || msg.includes("ECONNRESET")) {
+        console.warn(`[sync] Retry ${attempt + 1}/3 for ${entity} at offset ${offset}`);
+        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+        continue;
+      }
+      // Non-retryable error
       console.error(`[sync] Error upserting ${entity} at offset ${offset}:`, error);
       throw error;
+    }
+
+    if (lastError) {
+      console.error(`[sync] Failed after 3 retries ${entity} at offset ${offset}:`, lastError);
+      throw lastError;
     }
 
     synced += items.length;
