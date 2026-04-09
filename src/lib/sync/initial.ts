@@ -123,13 +123,27 @@ export async function runInitialSync(): Promise<Record<string, number>> {
   const results: Record<string, number> = {};
 
   try {
-    // Sync in order: entities without FK first
-    results.vendedores = await syncEntity(supabase, "vendedores", ENDPOINTS.vendedores, "id_vendedor");
-    results.clientes = await syncEntity(supabase, "clientes", ENDPOINTS.clientes, "id_cliente");
-    results.produtos = await syncEntity(supabase, "produtos", ENDPOINTS.produtos, "id_produto");
-    results.pedidos = await syncEntity(supabase, "pedidos", ENDPOINTS.pedidos, "id_pedido");
-    results.contas_pagar = await syncEntity(supabase, "contas_pagar", ENDPOINTS.contasPagar, "id_conta_pag");
-    results.contas_receber = await syncEntity(supabase, "contas_receber", ENDPOINTS.contasReceber, "id_conta_rec");
+    // Group 1: No FK dependencies - run in parallel
+    console.log("[sync] Group 1: vendedores + clientes + produtos (parallel)");
+    const [vendedores, clientes, produtos] = await Promise.all([
+      syncEntity(supabase, "vendedores", ENDPOINTS.vendedores, "id_vendedor"),
+      syncEntity(supabase, "clientes", ENDPOINTS.clientes, "id_cliente"),
+      syncEntity(supabase, "produtos", ENDPOINTS.produtos, "id_produto"),
+    ]);
+    results.vendedores = vendedores;
+    results.clientes = clientes;
+    results.produtos = produtos;
+
+    // Group 2: Depend on clientes - run in parallel
+    console.log("[sync] Group 2: pedidos + contas_pagar + contas_receber (parallel)");
+    const [pedidos, contasPagar, contasReceber] = await Promise.all([
+      syncEntity(supabase, "pedidos", ENDPOINTS.pedidos, "id_pedido"),
+      syncEntity(supabase, "contas_pagar", ENDPOINTS.contasPagar, "id_conta_pag"),
+      syncEntity(supabase, "contas_receber", ENDPOINTS.contasReceber, "id_conta_rec"),
+    ]);
+    results.pedidos = pedidos;
+    results.contas_pagar = contasPagar;
+    results.contas_receber = contasReceber;
 
     console.log("[sync] All entities synced:", results);
   } catch (error) {
