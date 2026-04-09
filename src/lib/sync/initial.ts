@@ -61,7 +61,16 @@ async function syncEntity(
     const items: Record<string, unknown>[] = Array.isArray(rawData) ? rawData : [];
     if (items.length === 0) break;
 
-    const batch = items.map((item) => ({
+    // Deduplicate by primary key (VHSys can return dupes in same page)
+    const seen = new Set<unknown>();
+    const deduped = items.filter((item) => {
+      const key = item[primaryKey];
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    const batch = deduped.map((item) => ({
       ...(fields ? pickFields(item, fields) : item),
       synced_at: new Date().toISOString(),
     }));
