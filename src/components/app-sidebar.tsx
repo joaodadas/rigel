@@ -18,6 +18,7 @@ import {
   LogOut,
   ChevronRight,
   ChevronsUpDown,
+  BarChart3,
 } from "lucide-react"
 
 import { authClient } from "@/lib/auth-client"
@@ -78,6 +79,7 @@ function isNavGroup(entry: NavEntry): entry is NavGroup {
 const navByRole: Record<string, NavEntry[]> = {
   admin: [
     { title: "Dashboard", url: "/admin", icon: LayoutDashboard },
+    { title: "BI Comercial", url: "/admin/bi", icon: BarChart3 },
     { title: "Clientes", url: "/admin/clientes", icon: Users },
     { title: "Pedidos", url: "/admin/pedidos", icon: ShoppingCart },
     { title: "Orçamentos", url: "/admin/orcamentos", icon: FileText },
@@ -96,6 +98,7 @@ const navByRole: Record<string, NavEntry[]> = {
   ],
   comercial: [
     { title: "Dashboard", url: "/comercial", icon: LayoutDashboard },
+    { title: "BI Comercial", url: "/comercial/bi", icon: BarChart3 },
     { title: "Clientes", url: "/comercial/clientes", icon: Users },
     { title: "Pedidos", url: "/comercial/pedidos", icon: ShoppingCart },
     { title: "Orçamentos", url: "/comercial/orcamentos", icon: FileText },
