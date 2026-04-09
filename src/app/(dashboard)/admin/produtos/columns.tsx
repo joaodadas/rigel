@@ -85,8 +85,12 @@ export const columns: ColumnDef<ProdutoRow>[] = [
     header: ({ column }) => <SortableHeader column={column} label="Status" />,
     cell: ({ row }) => {
       const status = row.getValue("status_produto") as string
-      return (
-        <Badge variant={status === "Ativo" ? "default" : "destructive"}>
+      return status === "Ativo" ? (
+        <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+          {status}
+        </Badge>
+      ) : (
+        <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400">
           {status}
         </Badge>
       )

@@ -69,19 +69,16 @@ export const columns: ColumnDef<OrcamentoRow>[] = [
     header: ({ column }) => <SortableHeader column={column} label="Status" />,
     cell: ({ row }) => {
       const status = row.getValue("status_pedido") as string
-      const variantMap: Record<string, "secondary" | "default" | "outline" | "destructive"> = {
-        "Em Aberto": "secondary",
-        "Em Andamento": "default",
-        "Atendido": "outline",
-        "Cancelado": "destructive",
+      const styles: Record<string, string> = {
+        "Em Aberto": "",
+        "Em Andamento": "border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400",
+        "Atendido": "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+        "Cancelado": "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400",
       }
-      const variant = variantMap[status] ?? "secondary"
+      const className = styles[status]
       return (
-        <Badge
-          variant={variant}
-          className={status === "Atendido" ? "text-emerald-500" : undefined}
-        >
-          {status}
+        <Badge variant={className ? "outline" : "secondary"} className={className}>
+          {status || "\u2014"}
         </Badge>
       )
     },

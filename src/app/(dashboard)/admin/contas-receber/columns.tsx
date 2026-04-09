@@ -109,7 +109,7 @@ export const columns: ColumnDef<ContaReceberRow>[] = [
     cell: ({ row }) => {
       const liquidado = row.getValue("liquidado_rec") as string
       return liquidado === "Sim" ? (
-        <Badge variant="outline" className="text-emerald-600 border-emerald-600/30">
+        <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
           Liquidado
         </Badge>
       ) : (
