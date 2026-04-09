@@ -4,7 +4,11 @@ import { redirect } from "next/navigation";
 import { getVendedores } from "@/lib/queries/vendedores";
 import { VendedoresTable } from "./vendedores-table";
 
-export default async function VendedoresPage() {
+interface Props {
+  searchParams: Promise<{ page?: string; search?: string; pageSize?: string }>;
+}
+
+export default async function VendedoresPage({ searchParams }: Props) {
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -13,7 +17,12 @@ export default async function VendedoresPage() {
     redirect("/login");
   }
 
-  const vendedores = await getVendedores();
+  const params = await searchParams;
+  const page = Number(params.page) || 1;
+  const pageSize = Number(params.pageSize) || 50;
+  const search = params.search || "";
+
+  const { data, total } = await getVendedores(page, pageSize, search || undefined);
 
   return (
     <div className="space-y-6">
@@ -23,7 +32,7 @@ export default async function VendedoresPage() {
           Gerencie os vendedores
         </p>
       </div>
-      <VendedoresTable data={vendedores} />
+      <VendedoresTable data={data} total={total} page={page} pageSize={pageSize} search={search} />
     </div>
   );
 }

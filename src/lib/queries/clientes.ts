@@ -14,22 +14,40 @@ export interface ClienteRow {
   lixeira: string;
 }
 
-export async function getClientes(): Promise<ClienteRow[]> {
-  const supabase = createSupabaseServer();
+export interface ClientesResult {
+  data: ClienteRow[];
+  total: number;
+}
 
-  const { data, error } = await supabase
+export async function getClientes(
+  page = 1,
+  pageSize = 50,
+  search?: string
+): Promise<ClientesResult> {
+  const supabase = createSupabaseServer();
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
     .from("clientes")
     .select(
-      "id_cliente, razao_cliente, fantasia_cliente, cnpj_cliente, cidade_cliente, uf_cliente, fone_cliente, email_cliente, situacao_cliente, data_cad_cliente, lixeira"
+      "id_cliente, razao_cliente, fantasia_cliente, cnpj_cliente, cidade_cliente, uf_cliente, fone_cliente, email_cliente, situacao_cliente, data_cad_cliente, lixeira",
+      { count: "exact" }
     )
-    .eq("lixeira", "Nao")
+    .eq("lixeira", "Nao");
+
+  if (search && search.trim()) {
+    query = query.ilike("razao_cliente", `%${search.trim()}%`);
+  }
+
+  const { data, error, count } = await query
     .order("razao_cliente", { ascending: true })
-    .limit(1000);
+    .range(from, to);
 
   if (error) {
     console.error("Error fetching clientes:", error);
-    return [];
+    return { data: [], total: 0 };
   }
 
-  return data as ClienteRow[];
+  return { data: data as ClienteRow[], total: count ?? 0 };
 }

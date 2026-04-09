@@ -12,22 +12,40 @@ export interface NotaFiscalRow {
   lixeira: string;
 }
 
-export async function getNotasFiscais(): Promise<NotaFiscalRow[]> {
-  const supabase = createSupabaseServer();
+export interface NotasFiscaisResult {
+  data: NotaFiscalRow[];
+  total: number;
+}
 
-  const { data, error } = await supabase
+export async function getNotasFiscais(
+  page = 1,
+  pageSize = 50,
+  search?: string
+): Promise<NotasFiscaisResult> {
+  const supabase = createSupabaseServer();
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
     .from("notas_fiscais")
     .select(
-      "id_venda, serie_nota, nome_cliente, valor_total_nota, status_pedido, nota_emitida, nota_chave, data_pedido, lixeira"
+      "id_venda, serie_nota, nome_cliente, valor_total_nota, status_pedido, nota_emitida, nota_chave, data_pedido, lixeira",
+      { count: "exact" }
     )
-    .eq("lixeira", "Nao")
+    .eq("lixeira", "Nao");
+
+  if (search && search.trim()) {
+    query = query.ilike("nome_cliente", `%${search.trim()}%`);
+  }
+
+  const { data, error, count } = await query
     .order("data_pedido", { ascending: false })
-    .limit(1000);
+    .range(from, to);
 
   if (error) {
     console.error("Error fetching notas fiscais:", error);
-    return [];
+    return { data: [], total: 0 };
   }
 
-  return data as NotaFiscalRow[];
+  return { data: data as NotaFiscalRow[], total: count ?? 0 };
 }

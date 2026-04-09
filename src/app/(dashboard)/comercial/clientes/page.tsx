@@ -4,7 +4,11 @@ import { redirect } from "next/navigation";
 import { getClientes } from "@/lib/queries/clientes";
 import { ClientesTable } from "../../admin/clientes/clientes-table";
 
-export default async function ComercialClientesPage() {
+interface Props {
+  searchParams: Promise<{ page?: string; search?: string; pageSize?: string }>;
+}
+
+export default async function ComercialClientesPage({ searchParams }: Props) {
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -13,7 +17,12 @@ export default async function ComercialClientesPage() {
     redirect("/login");
   }
 
-  const clientes = await getClientes();
+  const params = await searchParams;
+  const page = Number(params.page) || 1;
+  const pageSize = Number(params.pageSize) || 50;
+  const search = params.search || "";
+
+  const { data, total } = await getClientes(page, pageSize, search || undefined);
 
   return (
     <div className="space-y-6">
@@ -23,7 +32,7 @@ export default async function ComercialClientesPage() {
           Gerencie a base de clientes
         </p>
       </div>
-      <ClientesTable data={clientes} />
+      <ClientesTable data={data} total={total} page={page} pageSize={pageSize} search={search} />
     </div>
   );
 }

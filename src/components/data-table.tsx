@@ -46,6 +46,12 @@ interface DataTableProps<TData, TValue> {
   data: TData[]
   searchKey?: string
   searchPlaceholder?: string
+  /** Server-side pagination props (when provided, disables client-side search) */
+  serverTotal?: number
+  serverPage?: number
+  serverPageSize?: number
+  serverSearch?: string
+  onServerNavigate?: (newPage?: number, newSearch?: string) => void
 }
 
 export function DataTable<TData, TValue>({
@@ -53,7 +59,13 @@ export function DataTable<TData, TValue>({
   data,
   searchKey,
   searchPlaceholder = "Buscar...",
+  serverTotal,
+  serverPage,
+  serverPageSize,
+  serverSearch,
+  onServerNavigate,
 }: DataTableProps<TData, TValue>) {
+  const isServerPaginated = serverTotal !== undefined && onServerNavigate !== undefined
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
@@ -75,7 +87,7 @@ export function DataTable<TData, TValue>({
     },
     initialState: {
       pagination: {
-        pageSize: 10,
+        pageSize: isServerPaginated ? (serverPageSize ?? 50) : 10,
       },
     },
   })
@@ -85,7 +97,21 @@ export function DataTable<TData, TValue>({
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-1 items-center gap-3">
-          {searchKey && (
+          {isServerPaginated ? (
+            <div className="relative max-w-sm flex-1">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder={searchPlaceholder}
+                defaultValue={serverSearch ?? ""}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    onServerNavigate(undefined, (e.target as HTMLInputElement).value)
+                  }
+                }}
+                className="h-9 bg-muted/50 pl-8"
+              />
+            </div>
+          ) : searchKey ? (
             <div className="relative max-w-sm flex-1">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -97,7 +123,7 @@ export function DataTable<TData, TValue>({
                 className="h-9 bg-muted/50 pl-8"
               />
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Column visibility */}
@@ -177,63 +203,103 @@ export function DataTable<TData, TValue>({
       </div>
 
       {/* Footer: Row count + Pagination */}
-      <div className="flex items-center justify-between gap-4">
-        <p className="text-sm tabular-nums text-muted-foreground">
-          {table.getFilteredRowModel().rows.length} resultado(s)
-        </p>
+      {isServerPaginated ? (
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-sm tabular-nums text-muted-foreground">
+            {serverTotal} resultado(s)
+          </p>
 
-        <div className="flex items-center gap-4">
-          {/* Rows per page */}
-          <div className="flex items-center gap-2">
-            <span className="hidden text-sm text-muted-foreground sm:inline">Linhas</span>
-            <Select
-              value={table.getState().pagination.pageSize}
-              onValueChange={(value) => table.setPageSize(Number(value))}
-            >
-              <SelectTrigger size="sm" className="h-8 w-[70px] min-w-[40px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="end" alignItemWithTrigger={false}>
-                {[10, 20, 50].map((pageSize) => (
-                  <SelectItem key={pageSize} value={pageSize}>
-                    {pageSize}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <div className="flex items-center gap-4">
+            {/* Page info */}
+            <span className="text-sm tabular-nums text-muted-foreground">
+              {serverPage} de{" "}
+              {Math.ceil(serverTotal / (serverPageSize ?? 50))}
+            </span>
 
-          {/* Page info */}
-          <span className="text-sm tabular-nums text-muted-foreground">
-            {table.getState().pagination.pageIndex + 1} de{" "}
-            {table.getPageCount()}
-          </span>
-
-          {/* Navigation */}
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="min-h-[40px] min-w-[40px] active:scale-[0.96]"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-            >
-              <ChevronLeft className="size-4" />
-              <span className="sr-only">Pagina anterior</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="min-h-[40px] min-w-[40px] active:scale-[0.96]"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-            >
-              <ChevronRight className="size-4" />
-              <span className="sr-only">Proxima pagina</span>
-            </Button>
+            {/* Navigation */}
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="min-h-[40px] min-w-[40px] active:scale-[0.96]"
+                onClick={() => onServerNavigate((serverPage ?? 1) - 1)}
+                disabled={(serverPage ?? 1) <= 1}
+              >
+                <ChevronLeft className="size-4" />
+                <span className="sr-only">Pagina anterior</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="min-h-[40px] min-w-[40px] active:scale-[0.96]"
+                onClick={() => onServerNavigate((serverPage ?? 1) + 1)}
+                disabled={(serverPage ?? 1) >= Math.ceil(serverTotal / (serverPageSize ?? 50))}
+              >
+                <ChevronRight className="size-4" />
+                <span className="sr-only">Proxima pagina</span>
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-sm tabular-nums text-muted-foreground">
+            {table.getFilteredRowModel().rows.length} resultado(s)
+          </p>
+
+          <div className="flex items-center gap-4">
+            {/* Rows per page */}
+            <div className="flex items-center gap-2">
+              <span className="hidden text-sm text-muted-foreground sm:inline">Linhas</span>
+              <Select
+                value={table.getState().pagination.pageSize}
+                onValueChange={(value) => table.setPageSize(Number(value))}
+              >
+                <SelectTrigger size="sm" className="h-8 w-[70px] min-w-[40px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="end" alignItemWithTrigger={false}>
+                  {[10, 20, 50].map((pageSize) => (
+                    <SelectItem key={pageSize} value={pageSize}>
+                      {pageSize}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Page info */}
+            <span className="text-sm tabular-nums text-muted-foreground">
+              {table.getState().pagination.pageIndex + 1} de{" "}
+              {table.getPageCount()}
+            </span>
+
+            {/* Navigation */}
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="min-h-[40px] min-w-[40px] active:scale-[0.96]"
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+              >
+                <ChevronLeft className="size-4" />
+                <span className="sr-only">Pagina anterior</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="min-h-[40px] min-w-[40px] active:scale-[0.96]"
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+              >
+                <ChevronRight className="size-4" />
+                <span className="sr-only">Proxima pagina</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

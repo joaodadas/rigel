@@ -4,7 +4,11 @@ import { redirect } from "next/navigation";
 import { getContasReceber } from "@/lib/queries/contas-receber";
 import { ContasReceberTable } from "../../admin/contas-receber/contas-receber-table";
 
-export default async function FinanceiroContasReceberPage() {
+interface Props {
+  searchParams: Promise<{ page?: string; search?: string; pageSize?: string }>;
+}
+
+export default async function FinanceiroContasReceberPage({ searchParams }: Props) {
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -13,7 +17,12 @@ export default async function FinanceiroContasReceberPage() {
     redirect("/login");
   }
 
-  const contasReceber = await getContasReceber();
+  const params = await searchParams;
+  const page = Number(params.page) || 1;
+  const pageSize = Number(params.pageSize) || 50;
+  const search = params.search || "";
+
+  const { data, total } = await getContasReceber(page, pageSize, search || undefined);
 
   return (
     <div className="space-y-6">
@@ -23,7 +32,7 @@ export default async function FinanceiroContasReceberPage() {
           Gerencie as contas a receber
         </p>
       </div>
-      <ContasReceberTable data={contasReceber} />
+      <ContasReceberTable data={data} total={total} page={page} pageSize={pageSize} search={search} />
     </div>
   );
 }

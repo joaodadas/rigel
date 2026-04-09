@@ -4,7 +4,11 @@ import { redirect } from "next/navigation";
 import { getProdutos } from "@/lib/queries/produtos";
 import { ProdutosTable } from "../../admin/produtos/produtos-table";
 
-export default async function ComercialProdutosPage() {
+interface Props {
+  searchParams: Promise<{ page?: string; search?: string; pageSize?: string }>;
+}
+
+export default async function ComercialProdutosPage({ searchParams }: Props) {
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -13,7 +17,12 @@ export default async function ComercialProdutosPage() {
     redirect("/login");
   }
 
-  const produtos = await getProdutos();
+  const params = await searchParams;
+  const page = Number(params.page) || 1;
+  const pageSize = Number(params.pageSize) || 50;
+  const search = params.search || "";
+
+  const { data, total } = await getProdutos(page, pageSize, search || undefined);
 
   return (
     <div className="space-y-6">
@@ -23,7 +32,7 @@ export default async function ComercialProdutosPage() {
           Gerencie o catalogo de produtos
         </p>
       </div>
-      <ProdutosTable data={produtos} />
+      <ProdutosTable data={data} total={total} page={page} pageSize={pageSize} search={search} />
     </div>
   );
 }

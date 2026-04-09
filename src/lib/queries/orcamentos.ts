@@ -11,22 +11,40 @@ export interface OrcamentoRow {
   lixeira: string;
 }
 
-export async function getOrcamentos(): Promise<OrcamentoRow[]> {
-  const supabase = createSupabaseServer();
+export interface OrcamentosResult {
+  data: OrcamentoRow[];
+  total: number;
+}
 
-  const { data, error } = await supabase
+export async function getOrcamentos(
+  page = 1,
+  pageSize = 50,
+  search?: string
+): Promise<OrcamentosResult> {
+  const supabase = createSupabaseServer();
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
     .from("orcamentos")
     .select(
-      "id_orcamento, nome_cliente, vendedor_pedido, valor_total_nota, status_pedido, data_pedido, validade_orcamento, lixeira"
+      "id_orcamento, nome_cliente, vendedor_pedido, valor_total_nota, status_pedido, data_pedido, validade_orcamento, lixeira",
+      { count: "exact" }
     )
-    .eq("lixeira", "Nao")
+    .eq("lixeira", "Nao");
+
+  if (search && search.trim()) {
+    query = query.ilike("nome_cliente", `%${search.trim()}%`);
+  }
+
+  const { data, error, count } = await query
     .order("data_pedido", { ascending: false })
-    .limit(1000);
+    .range(from, to);
 
   if (error) {
     console.error("Error fetching orcamentos:", error);
-    return [];
+    return { data: [], total: 0 };
   }
 
-  return data as OrcamentoRow[];
+  return { data: data as OrcamentoRow[], total: count ?? 0 };
 }

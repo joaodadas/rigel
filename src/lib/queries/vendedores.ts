@@ -12,21 +12,40 @@ export interface VendedorRow {
   comissao_usuario: number | null;
 }
 
-export async function getVendedores(): Promise<VendedorRow[]> {
-  const supabase = createSupabaseServer();
+export interface VendedoresResult {
+  data: VendedorRow[];
+  total: number;
+}
 
-  const { data, error } = await supabase
+export async function getVendedores(
+  page = 1,
+  pageSize = 50,
+  search?: string
+): Promise<VendedoresResult> {
+  const supabase = createSupabaseServer();
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
     .from("vendedores")
     .select(
-      "id_vendedor, razao_vendedor, fantasia_vendedor, cidade_vendedor, uf_vendedor, fone_vendedor, email_vendedor, situacao_vendedor, comissao_usuario"
+      "id_vendedor, razao_vendedor, fantasia_vendedor, cidade_vendedor, uf_vendedor, fone_vendedor, email_vendedor, situacao_vendedor, comissao_usuario",
+      { count: "exact" }
     )
-    .eq("lixeira", "Nao")
-    .order("razao_vendedor", { ascending: true });
+    .eq("lixeira", "Nao");
+
+  if (search && search.trim()) {
+    query = query.ilike("razao_vendedor", `%${search.trim()}%`);
+  }
+
+  const { data, error, count } = await query
+    .order("razao_vendedor", { ascending: true })
+    .range(from, to);
 
   if (error) {
     console.error("Error fetching vendedores:", error);
-    return [];
+    return { data: [], total: 0 };
   }
 
-  return data as VendedorRow[];
+  return { data: data as VendedorRow[], total: count ?? 0 };
 }

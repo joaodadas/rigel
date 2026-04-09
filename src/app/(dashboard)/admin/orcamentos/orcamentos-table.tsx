@@ -1,20 +1,44 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import type { OrcamentoRow } from "@/lib/queries/orcamentos"
 import { columns } from "./columns"
 import { DataTable } from "@/components/data-table"
 
 interface OrcamentosTableProps {
   data: OrcamentoRow[]
+  total: number
+  page: number
+  pageSize: number
+  search: string
 }
 
-export function OrcamentosTable({ data }: OrcamentosTableProps) {
+export function OrcamentosTable({ data, total, page, pageSize, search }: OrcamentosTableProps) {
+  const router = useRouter()
+
+  function navigate(newPage?: number, newSearch?: string) {
+    const params = new URLSearchParams()
+    if (newSearch !== undefined) {
+      params.set("search", newSearch)
+      params.set("page", "1")
+    } else {
+      if (search) params.set("search", search)
+      if (newPage) params.set("page", String(newPage))
+    }
+    params.set("pageSize", String(pageSize))
+    router.push(`?${params.toString()}`)
+  }
+
   return (
     <DataTable
       columns={columns}
       data={data}
-      searchKey="nome_cliente"
       searchPlaceholder="Buscar por cliente..."
+      serverTotal={total}
+      serverPage={page}
+      serverPageSize={pageSize}
+      serverSearch={search}
+      onServerNavigate={navigate}
     />
   )
 }

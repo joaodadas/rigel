@@ -4,7 +4,11 @@ import { redirect } from "next/navigation";
 import { getPedidos } from "@/lib/queries/pedidos";
 import { PedidosTable } from "../../admin/pedidos/pedidos-table";
 
-export default async function ComercialPedidosPage() {
+interface Props {
+  searchParams: Promise<{ page?: string; search?: string; pageSize?: string }>;
+}
+
+export default async function ComercialPedidosPage({ searchParams }: Props) {
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -13,7 +17,12 @@ export default async function ComercialPedidosPage() {
     redirect("/login");
   }
 
-  const pedidos = await getPedidos();
+  const params = await searchParams;
+  const page = Number(params.page) || 1;
+  const pageSize = Number(params.pageSize) || 50;
+  const search = params.search || "";
+
+  const { data, total } = await getPedidos(page, pageSize, search || undefined);
 
   return (
     <div className="space-y-6">
@@ -23,7 +32,7 @@ export default async function ComercialPedidosPage() {
           Gerencie pedidos de venda
         </p>
       </div>
-      <PedidosTable data={pedidos} />
+      <PedidosTable data={data} total={total} page={page} pageSize={pageSize} search={search} />
     </div>
   );
 }

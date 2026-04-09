@@ -4,7 +4,11 @@ import { redirect } from "next/navigation";
 import { getNotasFiscais } from "@/lib/queries/notas-fiscais";
 import { NfeTable } from "../../admin/nfe/nfe-table";
 
-export default async function ComercialNfePage() {
+interface Props {
+  searchParams: Promise<{ page?: string; search?: string; pageSize?: string }>;
+}
+
+export default async function ComercialNfePage({ searchParams }: Props) {
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -13,7 +17,12 @@ export default async function ComercialNfePage() {
     redirect("/login");
   }
 
-  const notas = await getNotasFiscais();
+  const params = await searchParams;
+  const page = Number(params.page) || 1;
+  const pageSize = Number(params.pageSize) || 50;
+  const search = params.search || "";
+
+  const { data, total } = await getNotasFiscais(page, pageSize, search || undefined);
 
   return (
     <div className="space-y-6">
@@ -23,7 +32,7 @@ export default async function ComercialNfePage() {
           Gerencie notas fiscais eletronicas
         </p>
       </div>
-      <NfeTable data={notas} />
+      <NfeTable data={data} total={total} page={page} pageSize={pageSize} search={search} />
     </div>
   );
 }

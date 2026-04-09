@@ -11,22 +11,40 @@ export interface PedidoRow {
   lixeira: string;
 }
 
-export async function getPedidos(): Promise<PedidoRow[]> {
-  const supabase = createSupabaseServer();
+export interface PedidosResult {
+  data: PedidoRow[];
+  total: number;
+}
 
-  const { data, error } = await supabase
+export async function getPedidos(
+  page = 1,
+  pageSize = 50,
+  search?: string
+): Promise<PedidosResult> {
+  const supabase = createSupabaseServer();
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
     .from("pedidos")
     .select(
-      "id_pedido, nome_cliente, vendedor_pedido, valor_total_nota, status_pedido, data_pedido, data_cad_pedido, lixeira"
+      "id_pedido, nome_cliente, vendedor_pedido, valor_total_nota, status_pedido, data_pedido, data_cad_pedido, lixeira",
+      { count: "exact" }
     )
-    .eq("lixeira", "Nao")
+    .eq("lixeira", "Nao");
+
+  if (search && search.trim()) {
+    query = query.ilike("nome_cliente", `%${search.trim()}%`);
+  }
+
+  const { data, error, count } = await query
     .order("data_cad_pedido", { ascending: false })
-    .limit(1000);
+    .range(from, to);
 
   if (error) {
     console.error("Error fetching pedidos:", error);
-    return [];
+    return { data: [], total: 0 };
   }
 
-  return data as PedidoRow[];
+  return { data: data as PedidoRow[], total: count ?? 0 };
 }

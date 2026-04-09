@@ -14,22 +14,40 @@ export interface ContaReceberRow {
   lixeira: string;
 }
 
-export async function getContasReceber(): Promise<ContaReceberRow[]> {
-  const supabase = createSupabaseServer();
+export interface ContasReceberResult {
+  data: ContaReceberRow[];
+  total: number;
+}
 
-  const { data, error } = await supabase
+export async function getContasReceber(
+  page = 1,
+  pageSize = 50,
+  search?: string
+): Promise<ContasReceberResult> {
+  const supabase = createSupabaseServer();
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
     .from("contas_receber")
     .select(
-      "id_conta_rec, nome_conta, nome_cliente, categoria_rec, vencimento_rec, valor_rec, valor_pago, liquidado_rec, forma_pagamento, data_pagamento, lixeira"
+      "id_conta_rec, nome_conta, nome_cliente, categoria_rec, vencimento_rec, valor_rec, valor_pago, liquidado_rec, forma_pagamento, data_pagamento, lixeira",
+      { count: "exact" }
     )
-    .eq("lixeira", "Nao")
+    .eq("lixeira", "Nao");
+
+  if (search && search.trim()) {
+    query = query.ilike("nome_conta", `%${search.trim()}%`);
+  }
+
+  const { data, error, count } = await query
     .order("vencimento_rec", { ascending: false })
-    .limit(1000);
+    .range(from, to);
 
   if (error) {
     console.error("Error fetching contas a receber:", error);
-    return [];
+    return { data: [], total: 0 };
   }
 
-  return data as ContaReceberRow[];
+  return { data: data as ContaReceberRow[], total: count ?? 0 };
 }

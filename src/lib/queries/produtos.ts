@@ -12,22 +12,40 @@ export interface ProdutoRow {
   lixeira: string;
 }
 
-export async function getProdutos(): Promise<ProdutoRow[]> {
-  const supabase = createSupabaseServer();
+export interface ProdutosResult {
+  data: ProdutoRow[];
+  total: number;
+}
 
-  const { data, error } = await supabase
+export async function getProdutos(
+  page = 1,
+  pageSize = 50,
+  search?: string
+): Promise<ProdutosResult> {
+  const supabase = createSupabaseServer();
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
     .from("produtos")
     .select(
-      "id_produto, cod_produto, desc_produto, marca_produto, estoque_produto, unidade_produto, valor_produto, status_produto, lixeira"
+      "id_produto, cod_produto, desc_produto, marca_produto, estoque_produto, unidade_produto, valor_produto, status_produto, lixeira",
+      { count: "exact" }
     )
-    .eq("lixeira", "Nao")
+    .eq("lixeira", "Nao");
+
+  if (search && search.trim()) {
+    query = query.ilike("desc_produto", `%${search.trim()}%`);
+  }
+
+  const { data, error, count } = await query
     .order("desc_produto", { ascending: true })
-    .limit(1000);
+    .range(from, to);
 
   if (error) {
     console.error("Error fetching produtos:", error);
-    return [];
+    return { data: [], total: 0 };
   }
 
-  return data as ProdutoRow[];
+  return { data: data as ProdutoRow[], total: count ?? 0 };
 }

@@ -4,7 +4,11 @@ import { redirect } from "next/navigation";
 import { getContasPagar } from "@/lib/queries/contas-pagar";
 import { ContasPagarTable } from "../../admin/contas-pagar/contas-pagar-table";
 
-export default async function FinanceiroContasPagarPage() {
+interface Props {
+  searchParams: Promise<{ page?: string; search?: string; pageSize?: string }>;
+}
+
+export default async function FinanceiroContasPagarPage({ searchParams }: Props) {
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -13,7 +17,12 @@ export default async function FinanceiroContasPagarPage() {
     redirect("/login");
   }
 
-  const contasPagar = await getContasPagar();
+  const params = await searchParams;
+  const page = Number(params.page) || 1;
+  const pageSize = Number(params.pageSize) || 50;
+  const search = params.search || "";
+
+  const { data, total } = await getContasPagar(page, pageSize, search || undefined);
 
   return (
     <div className="space-y-6">
@@ -23,7 +32,7 @@ export default async function FinanceiroContasPagarPage() {
           Gerencie as contas a pagar
         </p>
       </div>
-      <ContasPagarTable data={contasPagar} />
+      <ContasPagarTable data={data} total={total} page={page} pageSize={pageSize} search={search} />
     </div>
   );
 }

@@ -1,20 +1,44 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import type { ContaPagarRow } from "@/lib/queries/contas-pagar"
 import { columns } from "./columns"
 import { DataTable } from "@/components/data-table"
 
 interface ContasPagarTableProps {
   data: ContaPagarRow[]
+  total: number
+  page: number
+  pageSize: number
+  search: string
 }
 
-export function ContasPagarTable({ data }: ContasPagarTableProps) {
+export function ContasPagarTable({ data, total, page, pageSize, search }: ContasPagarTableProps) {
+  const router = useRouter()
+
+  function navigate(newPage?: number, newSearch?: string) {
+    const params = new URLSearchParams()
+    if (newSearch !== undefined) {
+      params.set("search", newSearch)
+      params.set("page", "1")
+    } else {
+      if (search) params.set("search", search)
+      if (newPage) params.set("page", String(newPage))
+    }
+    params.set("pageSize", String(pageSize))
+    router.push(`?${params.toString()}`)
+  }
+
   return (
     <DataTable
       columns={columns}
       data={data}
-      searchKey="nome_conta"
       searchPlaceholder="Buscar por nome da conta..."
+      serverTotal={total}
+      serverPage={page}
+      serverPageSize={pageSize}
+      serverSearch={search}
+      onServerNavigate={navigate}
     />
   )
 }

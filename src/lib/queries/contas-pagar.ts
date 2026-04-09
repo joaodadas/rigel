@@ -14,22 +14,40 @@ export interface ContaPagarRow {
   lixeira: string;
 }
 
-export async function getContasPagar(): Promise<ContaPagarRow[]> {
-  const supabase = createSupabaseServer();
+export interface ContasPagarResult {
+  data: ContaPagarRow[];
+  total: number;
+}
 
-  const { data, error } = await supabase
+export async function getContasPagar(
+  page = 1,
+  pageSize = 50,
+  search?: string
+): Promise<ContasPagarResult> {
+  const supabase = createSupabaseServer();
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
     .from("contas_pagar")
     .select(
-      "id_conta_pag, nome_conta, nome_fornecedor, categoria_pag, vencimento_pag, valor_pag, valor_pago, liquidado_pag, forma_pagamento, data_pagamento, lixeira"
+      "id_conta_pag, nome_conta, nome_fornecedor, categoria_pag, vencimento_pag, valor_pag, valor_pago, liquidado_pag, forma_pagamento, data_pagamento, lixeira",
+      { count: "exact" }
     )
-    .eq("lixeira", "Nao")
+    .eq("lixeira", "Nao");
+
+  if (search && search.trim()) {
+    query = query.ilike("nome_conta", `%${search.trim()}%`);
+  }
+
+  const { data, error, count } = await query
     .order("vencimento_pag", { ascending: false })
-    .limit(1000);
+    .range(from, to);
 
   if (error) {
     console.error("Error fetching contas a pagar:", error);
-    return [];
+    return { data: [], total: 0 };
   }
 
-  return data as ContaPagarRow[];
+  return { data: data as ContaPagarRow[], total: count ?? 0 };
 }
