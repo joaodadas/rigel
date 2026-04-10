@@ -386,12 +386,13 @@ export async function getClientesInativos(
   const [clientes, pedidos] = await Promise.all([
     supabaseFetchAll<{
       id_cliente: string;
-      nome_cliente: string;
+      razao_cliente: string;
+      fantasia_cliente: string | null;
       vendedor_cliente: string;
     }>((from, to) => {
       let q = supabase
         .from("clientes")
-        .select("id_cliente, nome_cliente, vendedor_cliente")
+        .select("id_cliente, razao_cliente, fantasia_cliente, vendedor_cliente")
         .eq("lixeira", "Nao");
       if (vendedorFilter) {
         q = q.eq("vendedor_cliente", vendedorFilter);
@@ -453,7 +454,7 @@ export async function getClientesInativos(
       : 9999; // never purchased
 
     result.push({
-      nome: (c.nome_cliente as string) ?? "",
+      nome: (c.fantasia_cliente || c.razao_cliente) ?? "",
       vendedor: (c.vendedor_cliente as string) ?? "",
       ultimoPedido: ultimoPedidoDate,
       valorUltimoPedido: last?.valor ?? 0,
