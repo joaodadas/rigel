@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   BarChart,
   Bar,
@@ -173,9 +174,21 @@ export function ComercialDashboard({
   defaultMes,
   defaultAno,
 }: ComercialDashboardProps) {
-  const [mes] = useState(defaultMes);
-  const [ano] = useState(defaultAno);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const mes = defaultMes;
+  const ano = defaultAno;
   const [vendedorFilter, setVendedorFilter] = useState("todos");
+
+  const navigateToMonth = useCallback(
+    (newMes: number, newAno: number) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("mes", String(newMes));
+      params.set("ano", String(newAno));
+      router.push(`?${params.toString()}`);
+    },
+    [router, searchParams]
+  );
 
   // Distinct vendedores for filter
   const vendedores = useMemo(() => {
@@ -335,11 +348,43 @@ export function ComercialDashboard({
             BI Comercial
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Indicadores comerciais - {MESES[mes - 1]?.label ?? mes}/{ano}
+            Indicadores comerciais acumulados ate {MESES[mes - 1]?.label ?? mes}/{ano}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={String(mes)}
+            onValueChange={(v) => navigateToMonth(Number(v), ano)}
+          >
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Mes" />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {MESES.map((m) => (
+                <SelectItem key={m.value} value={String(m.value)}>
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={String(ano)}
+            onValueChange={(v) => navigateToMonth(mes, Number(v))}
+          >
+            <SelectTrigger className="w-[100px]">
+              <SelectValue placeholder="Ano" />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {[ano - 1, ano].map((y) => (
+                <SelectItem key={y} value={String(y)}>
+                  {y}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Select
             value={vendedorFilter}
             onValueChange={(v) => setVendedorFilter(v ?? "todos")}
@@ -347,7 +392,7 @@ export function ComercialDashboard({
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="Vendedor" />
             </SelectTrigger>
-            <SelectContent align="end" alignItemWithTrigger={false}>
+            <SelectContent align="end">
               <SelectItem value="todos">Todos os vendedores</SelectItem>
               {vendedores.map((v) => (
                 <SelectItem key={v} value={v}>

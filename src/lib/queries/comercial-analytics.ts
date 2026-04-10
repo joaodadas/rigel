@@ -1,4 +1,5 @@
 import { createSupabaseServer } from "@/lib/supabase/client";
+import { supabaseFetchAll } from "@/lib/supabase/fetch-all";
 import {
   METAS_VENDEDORES,
   getMetaMensal,
@@ -118,24 +119,32 @@ export async function getComercialKPIs(
     new Date(now.getFullYear(), now.getMonth() - 6, now.getDate())
   );
 
-  const [pedidosResult, clientesAtivosResult, baseTotalResult] =
+  const [pedidos, clientesAtivosRows, baseTotalResult] =
     await Promise.all([
-      // Pedidos atendidos in the period
-      supabase
-        .from("pedidos")
-        .select("valor_total_nota")
-        .eq("status_pedido", "Atendido")
-        .eq("lixeira", "Nao")
-        .gte("data_pedido", start)
-        .lte("data_pedido", end),
+      // Pedidos atendidos in the period (ALL rows, not just first 1000)
+      supabaseFetchAll<{ valor_total_nota: string }>(
+        (from, to) =>
+          supabase
+            .from("pedidos")
+            .select("valor_total_nota")
+            .eq("status_pedido", "Atendido")
+            .eq("lixeira", "Nao")
+            .gte("data_pedido", start)
+            .lte("data_pedido", end)
+            .range(from, to)
+      ),
 
       // Clientes ativos: distinct id_cliente with pedido in last 6 months
-      supabase
-        .from("pedidos")
-        .select("id_cliente")
-        .eq("status_pedido", "Atendido")
-        .eq("lixeira", "Nao")
-        .gte("data_pedido", sixMonthsAgo),
+      supabaseFetchAll<{ id_cliente: string }>(
+        (from, to) =>
+          supabase
+            .from("pedidos")
+            .select("id_cliente")
+            .eq("status_pedido", "Atendido")
+            .eq("lixeira", "Nao")
+            .gte("data_pedido", sixMonthsAgo)
+            .range(from, to)
+      ),
 
       // Base total: all clients not in trash
       supabase
@@ -144,7 +153,6 @@ export async function getComercialKPIs(
         .eq("lixeira", "Nao"),
     ]);
 
-  const pedidos = pedidosResult.data ?? [];
   const faturamentoB2B = pedidos.reduce(
     (sum, row) => sum + (Number(row.valor_total_nota) || 0),
     0
@@ -158,9 +166,7 @@ export async function getComercialKPIs(
 
   // Distinct active clients
   const activeClientIds = new Set(
-    (clientesAtivosResult.data ?? []).map(
-      (r: { id_cliente: string }) => r.id_cliente
-    )
+    clientesAtivosRows.map((r) => r.id_cliente)
   );
   const clientesAtivos = activeClientIds.size;
 
@@ -191,15 +197,20 @@ export async function getPedidosPorVendedor(
   const supabase = createSupabaseServer();
   const { start, end } = buildDateRange(mesInicio, mesFim, ano);
 
-  const { data } = await supabase
-    .from("pedidos")
-    .select("vendedor_pedido, valor_total_nota")
-    .eq("status_pedido", "Atendido")
-    .eq("lixeira", "Nao")
-    .gte("data_pedido", start)
-    .lte("data_pedido", end);
-
-  const rows = data ?? [];
+  const rows = await supabaseFetchAll<{
+    vendedor_pedido: string;
+    valor_total_nota: string;
+  }>(
+    (from, to) =>
+      supabase
+        .from("pedidos")
+        .select("vendedor_pedido, valor_total_nota")
+        .eq("status_pedido", "Atendido")
+        .eq("lixeira", "Nao")
+        .gte("data_pedido", start)
+        .lte("data_pedido", end)
+        .range(from, to)
+  );
 
   // Group by vendedor in JS
   const groups: Record<string, { total: number; count: number }> = {};
@@ -244,23 +255,28 @@ export async function getPedidosPorRegiao(
   const { start, end } = buildDateRange(mesInicio, mesFim, ano);
 
   // Fetch pedidos and clientes in parallel, then join in JS
-  const [pedidosResult, clientesResult] = await Promise.all([
-    supabase
-      .from("pedidos")
-      .select("id_cliente, valor_total_nota")
-      .eq("status_pedido", "Atendido")
-      .eq("lixeira", "Nao")
-      .gte("data_pedido", start)
-      .lte("data_pedido", end),
+  const [pedidos, clientes] = await Promise.all([
+    supabaseFetchAll<{ id_cliente: string; valor_total_nota: string }>(
+      (from, to) =>
+        supabase
+          .from("pedidos")
+          .select("id_cliente, valor_total_nota")
+          .eq("status_pedido", "Atendido")
+          .eq("lixeira", "Nao")
+          .gte("data_pedido", start)
+          .lte("data_pedido", end)
+          .range(from, to)
+    ),
 
-    supabase
-      .from("clientes")
-      .select("id_cliente, uf_cliente")
-      .eq("lixeira", "Nao"),
+    supabaseFetchAll<{ id_cliente: string; uf_cliente: string }>(
+      (from, to) =>
+        supabase
+          .from("clientes")
+          .select("id_cliente, uf_cliente")
+          .eq("lixeira", "Nao")
+          .range(from, to)
+    ),
   ]);
-
-  const pedidos = pedidosResult.data ?? [];
-  const clientes = clientesResult.data ?? [];
 
   // Build client -> UF map
   const ufMap: Record<string, string> = {};
@@ -301,24 +317,29 @@ export async function getClientesAtivosVendedor(): Promise<
     new Date(now.getFullYear(), now.getMonth() - 6, now.getDate())
   );
 
-  const [clientesResult, pedidosRecentesResult] = await Promise.all([
+  const [clientes, recentPedidos] = await Promise.all([
     // All clients with their vendedor
-    supabase
-      .from("clientes")
-      .select("id_cliente, vendedor_cliente")
-      .eq("lixeira", "Nao"),
+    supabaseFetchAll<{ id_cliente: string; vendedor_cliente: string }>(
+      (from, to) =>
+        supabase
+          .from("clientes")
+          .select("id_cliente, vendedor_cliente")
+          .eq("lixeira", "Nao")
+          .range(from, to)
+    ),
 
     // Recent pedidos (last 6 months) to determine active clients
-    supabase
-      .from("pedidos")
-      .select("id_cliente")
-      .eq("status_pedido", "Atendido")
-      .eq("lixeira", "Nao")
-      .gte("data_pedido", sixMonthsAgo),
+    supabaseFetchAll<{ id_cliente: string }>(
+      (from, to) =>
+        supabase
+          .from("pedidos")
+          .select("id_cliente")
+          .eq("status_pedido", "Atendido")
+          .eq("lixeira", "Nao")
+          .gte("data_pedido", sixMonthsAgo)
+          .range(from, to)
+    ),
   ]);
-
-  const clientes = clientesResult.data ?? [];
-  const recentPedidos = pedidosRecentesResult.data ?? [];
 
   // Set of active client IDs
   const activeIds = new Set(
@@ -361,30 +382,39 @@ export async function getClientesInativos(
     new Date(now.getFullYear(), now.getMonth() - 6, now.getDate())
   );
 
-  // Fetch clients (optionally filtered by vendedor)
-  let clientesQuery = supabase
-    .from("clientes")
-    .select("id_cliente, nome_cliente, vendedor_cliente")
-    .eq("lixeira", "Nao");
-
-  if (vendedorFilter) {
-    clientesQuery = clientesQuery.eq("vendedor_cliente", vendedorFilter);
-  }
-
-  const [clientesResult, pedidosResult] = await Promise.all([
-    clientesQuery,
+  // Fetch clients and pedidos in parallel (ALL rows via pagination)
+  const [clientes, pedidos] = await Promise.all([
+    supabaseFetchAll<{
+      id_cliente: string;
+      nome_cliente: string;
+      vendedor_cliente: string;
+    }>((from, to) => {
+      let q = supabase
+        .from("clientes")
+        .select("id_cliente, nome_cliente, vendedor_cliente")
+        .eq("lixeira", "Nao");
+      if (vendedorFilter) {
+        q = q.eq("vendedor_cliente", vendedorFilter);
+      }
+      return q.range(from, to);
+    }),
 
     // All pedidos atendidos (we need the latest per client)
-    supabase
-      .from("pedidos")
-      .select("id_cliente, data_pedido, valor_total_nota")
-      .eq("status_pedido", "Atendido")
-      .eq("lixeira", "Nao")
-      .order("data_pedido", { ascending: false }),
+    supabaseFetchAll<{
+      id_cliente: string;
+      data_pedido: string;
+      valor_total_nota: string;
+    }>(
+      (from, to) =>
+        supabase
+          .from("pedidos")
+          .select("id_cliente, data_pedido, valor_total_nota")
+          .eq("status_pedido", "Atendido")
+          .eq("lixeira", "Nao")
+          .order("data_pedido", { ascending: false })
+          .range(from, to)
+    ),
   ]);
-
-  const clientes = clientesResult.data ?? [];
-  const pedidos = pedidosResult.data ?? [];
 
   // Build last-pedido map per client
   const lastPedido: Record<
@@ -452,15 +482,20 @@ export async function getProdutosEvolucao(
   );
   const endDate = toDateStr(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
-  const { data } = await supabase
-    .from("pedidos")
-    .select("data_pedido, valor_total_nota")
-    .eq("status_pedido", "Atendido")
-    .eq("lixeira", "Nao")
-    .gte("data_pedido", startDate)
-    .lte("data_pedido", endDate);
-
-  const rows = data ?? [];
+  const rows = await supabaseFetchAll<{
+    data_pedido: string;
+    valor_total_nota: string;
+  }>(
+    (from, to) =>
+      supabase
+        .from("pedidos")
+        .select("data_pedido, valor_total_nota")
+        .eq("status_pedido", "Atendido")
+        .eq("lixeira", "Nao")
+        .gte("data_pedido", startDate)
+        .lte("data_pedido", endDate)
+        .range(from, to)
+  );
 
   // Group by YYYY-MM
   const groups: Record<string, { faturamento: number; quantidade: number }> =

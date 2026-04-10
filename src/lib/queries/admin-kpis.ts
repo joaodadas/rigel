@@ -1,4 +1,5 @@
 import { createSupabaseServer } from "@/lib/supabase/client";
+import { supabaseFetchAll } from "@/lib/supabase/fetch-all";
 
 export interface AdminKPIs {
   faturamentoMes: number;
@@ -27,27 +28,32 @@ export async function getAdminKPIs(): Promise<AdminKPIs> {
     .split("T")[0];
 
   const [
-    faturamentoResult,
+    faturamentoRows,
     pedidosResult,
     clientesAtivosResult,
     clientesInativosResult,
-    contasReceberResult,
-    contasPagarResult,
+    contasReceberRows,
+    contasPagarRows,
     vendedoresResult,
   ] = await Promise.all([
     // 1. Faturamento do Mes - SUM valor_total_nota from pedidos (Atendido, current month)
-    supabase
-      .from("pedidos")
-      .select("valor_total_nota")
-      .eq("status_pedido", "Atendido")
-      .eq("lixeira", "Nao")
-      .gte("data_pedido", firstDayOfMonth)
-      .lte("data_pedido", lastDayOfMonth),
+    supabaseFetchAll<{ valor_total_nota: string }>(
+      (from, to) =>
+        supabase
+          .from("pedidos")
+          .select("valor_total_nota")
+          .eq("status_pedido", "Atendido")
+          .eq("lixeira", "Nao")
+          .gte("data_pedido", firstDayOfMonth)
+          .lte("data_pedido", lastDayOfMonth)
+          .range(from, to)
+    ),
 
-    // 2. Pedidos do Mes - COUNT pedidos (current month)
+    // 2. Pedidos do Mes - COUNT pedidos atendidos (current month)
     supabase
       .from("pedidos")
       .select("id", { count: "exact", head: true })
+      .eq("status_pedido", "Atendido")
       .eq("lixeira", "Nao")
       .gte("data_pedido", firstDayOfMonth)
       .lte("data_pedido", lastDayOfMonth),
@@ -67,20 +73,28 @@ export async function getAdminKPIs(): Promise<AdminKPIs> {
       .neq("situacao_cliente", "Ativo"),
 
     // 5. Contas a Receber em Aberto - SUM valor_rec
-    supabase
-      .from("contas_receber")
-      .select("valor_rec")
-      .eq("liquidado_rec", "Nao")
-      .eq("lixeira", "Nao"),
+    supabaseFetchAll<{ valor_rec: string }>(
+      (from, to) =>
+        supabase
+          .from("contas_receber")
+          .select("valor_rec")
+          .eq("liquidado_rec", "Nao")
+          .eq("lixeira", "Nao")
+          .range(from, to)
+    ),
 
     // 6. Contas a Pagar Vencendo (proximos 7 dias) - SUM valor_pag
-    supabase
-      .from("contas_pagar")
-      .select("valor_pag")
-      .eq("liquidado_pag", "Nao")
-      .eq("lixeira", "Nao")
-      .gte("vencimento_pag", today)
-      .lte("vencimento_pag", sevenDaysFromNow),
+    supabaseFetchAll<{ valor_pag: string }>(
+      (from, to) =>
+        supabase
+          .from("contas_pagar")
+          .select("valor_pag")
+          .eq("liquidado_pag", "Nao")
+          .eq("lixeira", "Nao")
+          .gte("vencimento_pag", today)
+          .lte("vencimento_pag", sevenDaysFromNow)
+          .range(from, to)
+    ),
 
     // 7. Vendedores Ativos
     supabase
@@ -91,12 +105,12 @@ export async function getAdminKPIs(): Promise<AdminKPIs> {
   ]);
 
   // Calculate faturamento (sum of valor_total_nota)
-  const faturamentoMes = (faturamentoResult.data ?? []).reduce(
+  const faturamentoMes = faturamentoRows.reduce(
     (sum, row) => sum + (Number(row.valor_total_nota) || 0),
     0
   );
 
-  // Pedidos count
+  // Pedidos count — now also filtered by "Atendido" to match faturamento
   const pedidosMes = pedidosResult.count ?? 0;
 
   // Clientes counts
@@ -104,13 +118,13 @@ export async function getAdminKPIs(): Promise<AdminKPIs> {
   const clientesInativos = clientesInativosResult.count ?? 0;
 
   // Contas a receber (sum of valor_rec)
-  const contasReceberAberto = (contasReceberResult.data ?? []).reduce(
+  const contasReceberAberto = contasReceberRows.reduce(
     (sum, row) => sum + (Number(row.valor_rec) || 0),
     0
   );
 
   // Contas a pagar vencendo (sum of valor_pag)
-  const contasPagarVencendo = (contasPagarResult.data ?? []).reduce(
+  const contasPagarVencendo = contasPagarRows.reduce(
     (sum, row) => sum + (Number(row.valor_pag) || 0),
     0
   );

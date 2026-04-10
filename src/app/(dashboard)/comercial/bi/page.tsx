@@ -11,7 +11,11 @@ import {
 } from "@/lib/queries/comercial-analytics";
 import { ComercialDashboard } from "./comercial-dashboard";
 
-export default async function ComercialBIPage() {
+interface PageProps {
+  searchParams: Promise<{ mes?: string; ano?: string }>;
+}
+
+export default async function ComercialBIPage({ searchParams }: PageProps) {
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -20,15 +24,20 @@ export default async function ComercialBIPage() {
     redirect("/login");
   }
 
+  const params = await searchParams;
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
 
+  // Use URL params or default to current month/year
+  const mes = params.mes ? Math.min(12, Math.max(1, Number(params.mes))) : currentMonth;
+  const ano = params.ano ? Number(params.ano) : currentYear;
+
   const [kpis, pedidosVendedor, pedidosRegiao, clientesStatus, clientesInativos, evolucao] =
     await Promise.all([
-      getComercialKPIs(1, currentMonth, currentYear),
-      getPedidosPorVendedor(1, currentMonth, currentYear),
-      getPedidosPorRegiao(1, currentMonth, currentYear),
+      getComercialKPIs(1, mes, ano),
+      getPedidosPorVendedor(1, mes, ano),
+      getPedidosPorRegiao(1, mes, ano),
       getClientesAtivosVendedor(),
       getClientesInativos(),
       getProdutosEvolucao(6),
@@ -42,8 +51,8 @@ export default async function ComercialBIPage() {
       clientesStatus={clientesStatus}
       clientesInativos={clientesInativos}
       evolucao={evolucao}
-      defaultMes={currentMonth}
-      defaultAno={currentYear}
+      defaultMes={mes}
+      defaultAno={ano}
     />
   );
 }
