@@ -52,7 +52,7 @@ export async function getAdminKPIs(): Promise<AdminKPIs> {
     // 2. Pedidos do Mes - COUNT pedidos atendidos (current month)
     supabase
       .from("pedidos")
-      .select("id", { count: "exact", head: true })
+      .select("*", { count: "exact", head: true })
       .eq("status_pedido", "Atendido")
       .eq("lixeira", "Nao")
       .gte("data_pedido", firstDayOfMonth)
@@ -61,14 +61,14 @@ export async function getAdminKPIs(): Promise<AdminKPIs> {
     // 3. Clientes Ativos
     supabase
       .from("clientes")
-      .select("id", { count: "exact", head: true })
+      .select("*", { count: "exact", head: true })
       .eq("lixeira", "Nao")
       .eq("situacao_cliente", "Ativo"),
 
     // 4. Clientes Inativos
     supabase
       .from("clientes")
-      .select("id", { count: "exact", head: true })
+      .select("*", { count: "exact", head: true })
       .eq("lixeira", "Nao")
       .neq("situacao_cliente", "Ativo"),
 
@@ -99,7 +99,7 @@ export async function getAdminKPIs(): Promise<AdminKPIs> {
     // 7. Vendedores Ativos
     supabase
       .from("vendedores")
-      .select("id", { count: "exact", head: true })
+      .select("*", { count: "exact", head: true })
       .eq("situacao_vendedor", "Ativo")
       .eq("lixeira", "Nao"),
   ]);

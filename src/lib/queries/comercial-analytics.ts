@@ -149,7 +149,7 @@ export async function getComercialKPIs(
       // Base total: all clients not in trash
       supabase
         .from("clientes")
-        .select("id", { count: "exact", head: true })
+        .select("*", { count: "exact", head: true })
         .eq("lixeira", "Nao"),
     ]);
 
