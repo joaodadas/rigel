@@ -1,5 +1,3 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-
 const PAGE_SIZE = 1000;
 
 /**
@@ -7,7 +5,8 @@ const PAGE_SIZE = 1000;
  * The Supabase JS client defaults to returning max 1000 rows.
  * This helper loops with .range() until all rows are retrieved.
  *
- * @param queryFn - receives (from, to) and must return a Supabase query with .range(from, to)
+ * On query errors, logs and returns whatever was collected so far
+ * (matches the original Supabase client behavior of not throwing).
  */
 export async function supabaseFetchAll<T = Record<string, unknown>>(
   queryFn: (
@@ -24,7 +23,8 @@ export async function supabaseFetchAll<T = Record<string, unknown>>(
     const { data, error } = await queryFn(from, to);
 
     if (error) {
-      throw error;
+      console.error("[supabaseFetchAll] Query error:", error);
+      break;
     }
 
     if (!data || data.length === 0) break;

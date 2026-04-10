@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   BarChart,
   Bar,
@@ -175,19 +175,15 @@ export function ComercialDashboard({
   defaultAno,
 }: ComercialDashboardProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const mes = defaultMes;
   const ano = defaultAno;
   const [vendedorFilter, setVendedorFilter] = useState("todos");
 
   const navigateToMonth = useCallback(
     (newMes: number, newAno: number) => {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("mes", String(newMes));
-      params.set("ano", String(newAno));
-      router.push(`?${params.toString()}`);
+      router.push(`?mes=${newMes}&ano=${newAno}`);
     },
-    [router, searchParams]
+    [router]
   );
 
   // Distinct vendedores for filter
