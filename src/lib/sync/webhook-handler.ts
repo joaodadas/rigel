@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { createSupabaseServer } from "@/lib/supabase/client";
 import { invalidateKPIs } from "@/lib/redis/client";
 
@@ -53,5 +54,7 @@ export async function handleVHSysWebhook(payload: WebhookEvent) {
   }
 
   await invalidateKPIs();
+  revalidateTag("kpi-admin");
+  revalidateTag("bi-comercial");
   return { handled: true, entity: entityKey, action };
 }

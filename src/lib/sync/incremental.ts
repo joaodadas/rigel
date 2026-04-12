@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { createSupabaseServer } from "@/lib/supabase/client";
 import { vhsysFetchAll } from "@/lib/vhsys/client";
 import { ENDPOINTS } from "@/lib/vhsys/endpoints";
@@ -104,6 +105,8 @@ export async function runIncrementalSync(): Promise<Record<string, number>> {
   }
 
   await invalidateKPIs();
+  revalidateTag("kpi-admin");
+  revalidateTag("bi-comercial");
   console.log("[incremental] Sync complete:", results);
 
   return results;

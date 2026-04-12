@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { createSupabaseServer } from "@/lib/supabase/client";
 import { supabaseFetchAll } from "@/lib/supabase/fetch-all";
 
@@ -11,7 +12,13 @@ export interface AdminKPIs {
   vendedoresAtivos: number;
 }
 
-export async function getAdminKPIs(): Promise<AdminKPIs> {
+export const getAdminKPIs = unstable_cache(
+  _getAdminKPIs,
+  ["admin-kpis"],
+  { revalidate: 300, tags: ["kpi-admin"] }
+);
+
+async function _getAdminKPIs(): Promise<AdminKPIs> {
   const supabase = createSupabaseServer();
 
   const now = new Date();

@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { createSupabaseServer } from "@/lib/supabase/client";
 import { supabaseFetchAll } from "@/lib/supabase/fetch-all";
 import {
@@ -6,6 +7,8 @@ import {
   getMetaAcumulada,
 } from "@/lib/config/metas-2026";
 import { mapVendedorToMeta } from "@/lib/config/vendedores-map";
+
+const CACHE_TTL = 300; // 5 minutes
 
 // ---------------------------------------------------------------------------
 // Types
@@ -105,7 +108,13 @@ function findMetaAnual(nomeVendedor: string): number {
 // 1. getComercialKPIs
 // ---------------------------------------------------------------------------
 
-export async function getComercialKPIs(
+export const getComercialKPIs = unstable_cache(
+  _getComercialKPIs,
+  ["comercial-kpis"],
+  { revalidate: CACHE_TTL, tags: ["bi-comercial"] }
+);
+
+async function _getComercialKPIs(
   mesInicio: number,
   mesFim: number,
   ano: number
@@ -189,7 +198,13 @@ export async function getComercialKPIs(
 // 2. getPedidosPorVendedor
 // ---------------------------------------------------------------------------
 
-export async function getPedidosPorVendedor(
+export const getPedidosPorVendedor = unstable_cache(
+  _getPedidosPorVendedor,
+  ["pedidos-vendedor"],
+  { revalidate: CACHE_TTL, tags: ["bi-comercial"] }
+);
+
+async function _getPedidosPorVendedor(
   mesInicio: number,
   mesFim: number,
   ano: number
@@ -246,7 +261,13 @@ export async function getPedidosPorVendedor(
 // 3. getPedidosPorRegiao
 // ---------------------------------------------------------------------------
 
-export async function getPedidosPorRegiao(
+export const getPedidosPorRegiao = unstable_cache(
+  _getPedidosPorRegiao,
+  ["pedidos-regiao"],
+  { revalidate: CACHE_TTL, tags: ["bi-comercial"] }
+);
+
+async function _getPedidosPorRegiao(
   mesInicio: number,
   mesFim: number,
   ano: number
@@ -308,7 +329,13 @@ export async function getPedidosPorRegiao(
 // 4. getClientesAtivosVendedor
 // ---------------------------------------------------------------------------
 
-export async function getClientesAtivosVendedor(): Promise<
+export const getClientesAtivosVendedor = unstable_cache(
+  _getClientesAtivosVendedor,
+  ["clientes-ativos-vendedor"],
+  { revalidate: CACHE_TTL, tags: ["bi-comercial"] }
+);
+
+async function _getClientesAtivosVendedor(): Promise<
   ClienteVendedorStatus[]
 > {
   const supabase = createSupabaseServer();
@@ -373,7 +400,13 @@ export async function getClientesAtivosVendedor(): Promise<
 // 5. getClientesInativos
 // ---------------------------------------------------------------------------
 
-export async function getClientesInativos(
+export const getClientesInativos = unstable_cache(
+  _getClientesInativos,
+  ["clientes-inativos"],
+  { revalidate: CACHE_TTL, tags: ["bi-comercial"] }
+);
+
+async function _getClientesInativos(
   vendedorFilter?: string
 ): Promise<ClienteInativo[]> {
   const supabase = createSupabaseServer();
@@ -471,7 +504,13 @@ export async function getClientesInativos(
 // TODO: Product-level breakdown requires product-pedido relation table to be
 //       synced. For now, returns monthly faturamento totals.
 
-export async function getProdutosEvolucao(
+export const getProdutosEvolucao = unstable_cache(
+  _getProdutosEvolucao,
+  ["produtos-evolucao"],
+  { revalidate: CACHE_TTL, tags: ["bi-comercial"] }
+);
+
+async function _getProdutosEvolucao(
   meses: number = 6,
   _produtoFilter?: string
 ): Promise<ProdutoEvolucao[]> {
