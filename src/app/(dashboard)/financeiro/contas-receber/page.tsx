@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { getContasReceber } from "@/lib/queries/contas-receber";
+import { getContasReceber, prefetchNextPage } from "@/lib/queries/contas-receber";
 import { ContasReceberTable } from "../../admin/contas-receber/contas-receber-table";
 
 interface Props {
@@ -20,6 +20,9 @@ export default async function FinanceiroContasReceberPage({ searchParams }: Prop
   const search = params.search || "";
 
   const { data, total } = await getContasReceber(page, pageSize, search || undefined);
+  if (data.length === pageSize) {
+    prefetchNextPage(page, pageSize, search || undefined);
+  }
 
   return (
     <div className="space-y-6">

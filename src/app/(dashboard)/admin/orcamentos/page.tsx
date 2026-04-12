@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { getOrcamentos } from "@/lib/queries/orcamentos";
+import { getOrcamentos, prefetchNextPage } from "@/lib/queries/orcamentos";
 import { OrcamentosTable } from "./orcamentos-table";
 
 interface Props {
@@ -20,6 +20,9 @@ export default async function OrcamentosPage({ searchParams }: Props) {
   const search = params.search || "";
 
   const { data, total } = await getOrcamentos(page, pageSize, search || undefined);
+  if (data.length === pageSize) {
+    prefetchNextPage(page, pageSize, search || undefined);
+  }
 
   return (
     <div className="space-y-6">

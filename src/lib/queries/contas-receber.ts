@@ -31,6 +31,13 @@ export async function getContasReceber(
   );
 }
 
+export function prefetchNextPage(page: number, pageSize: number, search?: string) {
+  void cacheList(
+    CACHE_KEYS.list("contas-receber", page + 1, pageSize, search || ""),
+    () => _fetchContasReceber(page + 1, pageSize, search)
+  );
+}
+
 async function _fetchContasReceber(
   page = 1,
   pageSize = 50,

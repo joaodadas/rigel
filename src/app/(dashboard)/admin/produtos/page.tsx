@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { getProdutos } from "@/lib/queries/produtos";
+import { getProdutos, prefetchNextPage } from "@/lib/queries/produtos";
 import { ProdutosTable } from "./produtos-table";
 
 interface Props {
@@ -20,6 +20,9 @@ export default async function ProdutosPage({ searchParams }: Props) {
   const search = params.search || "";
 
   const { data, total } = await getProdutos(page, pageSize, search || undefined);
+  if (data.length === pageSize) {
+    prefetchNextPage(page, pageSize, search || undefined);
+  }
 
   return (
     <div className="space-y-6">

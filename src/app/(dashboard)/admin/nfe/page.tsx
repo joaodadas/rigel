@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { getNotasFiscais } from "@/lib/queries/notas-fiscais";
+import { getNotasFiscais, prefetchNextPage } from "@/lib/queries/notas-fiscais";
 import { NfeTable } from "./nfe-table";
 
 interface Props {
@@ -20,6 +20,9 @@ export default async function NfePage({ searchParams }: Props) {
   const search = params.search || "";
 
   const { data, total } = await getNotasFiscais(page, pageSize, search || undefined);
+  if (data.length === pageSize) {
+    prefetchNextPage(page, pageSize, search || undefined);
+  }
 
   return (
     <div className="space-y-6">

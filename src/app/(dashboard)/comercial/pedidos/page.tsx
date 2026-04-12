@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { getPedidos } from "@/lib/queries/pedidos";
+import { getPedidos, prefetchNextPage } from "@/lib/queries/pedidos";
 import { PedidosTable } from "../../admin/pedidos/pedidos-table";
 
 interface Props {
@@ -20,6 +20,9 @@ export default async function ComercialPedidosPage({ searchParams }: Props) {
   const search = params.search || "";
 
   const { data, total } = await getPedidos(page, pageSize, search || undefined);
+  if (data.length === pageSize) {
+    prefetchNextPage(page, pageSize, search || undefined);
+  }
 
   return (
     <div className="space-y-6">

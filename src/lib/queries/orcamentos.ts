@@ -28,6 +28,13 @@ export async function getOrcamentos(
   );
 }
 
+export function prefetchNextPage(page: number, pageSize: number, search?: string) {
+  void cacheList(
+    CACHE_KEYS.list("orcamentos", page + 1, pageSize, search || ""),
+    () => _fetchOrcamentos(page + 1, pageSize, search)
+  );
+}
+
 async function _fetchOrcamentos(
   page = 1,
   pageSize = 50,

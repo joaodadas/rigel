@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { getVendedores } from "@/lib/queries/vendedores";
+import { getVendedores, prefetchNextPage } from "@/lib/queries/vendedores";
 import { VendedoresTable } from "./vendedores-table";
 
 interface Props {
@@ -20,6 +20,9 @@ export default async function VendedoresPage({ searchParams }: Props) {
   const search = params.search || "";
 
   const { data, total } = await getVendedores(page, pageSize, search || undefined);
+  if (data.length === pageSize) {
+    prefetchNextPage(page, pageSize, search || undefined);
+  }
 
   return (
     <div className="space-y-6">

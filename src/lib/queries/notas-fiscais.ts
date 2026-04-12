@@ -29,6 +29,13 @@ export async function getNotasFiscais(
   );
 }
 
+export function prefetchNextPage(page: number, pageSize: number, search?: string) {
+  void cacheList(
+    CACHE_KEYS.list("notas-fiscais", page + 1, pageSize, search || ""),
+    () => _fetchNotasFiscais(page + 1, pageSize, search)
+  );
+}
+
 async function _fetchNotasFiscais(
   page = 1,
   pageSize = 50,

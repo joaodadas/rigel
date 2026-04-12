@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { getClientes } from "@/lib/queries/clientes";
+import { getClientes, prefetchNextPage } from "@/lib/queries/clientes";
 import { ClientesTable } from "./clientes-table";
 
 interface Props {
@@ -20,6 +20,9 @@ export default async function ClientesPage({ searchParams }: Props) {
   const search = params.search || "";
 
   const { data, total } = await getClientes(page, pageSize, search || undefined);
+  if (data.length === pageSize) {
+    prefetchNextPage(page, pageSize, search || undefined);
+  }
 
   return (
     <div className="space-y-6">

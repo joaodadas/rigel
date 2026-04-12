@@ -29,6 +29,13 @@ export async function getProdutos(
   );
 }
 
+export function prefetchNextPage(page: number, pageSize: number, search?: string) {
+  void cacheList(
+    CACHE_KEYS.list("produtos", page + 1, pageSize, search || ""),
+    () => _fetchProdutos(page + 1, pageSize, search)
+  );
+}
+
 async function _fetchProdutos(
   page = 1,
   pageSize = 50,

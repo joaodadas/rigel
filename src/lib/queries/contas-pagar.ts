@@ -31,6 +31,13 @@ export async function getContasPagar(
   );
 }
 
+export function prefetchNextPage(page: number, pageSize: number, search?: string) {
+  void cacheList(
+    CACHE_KEYS.list("contas-pagar", page + 1, pageSize, search || ""),
+    () => _fetchContasPagar(page + 1, pageSize, search)
+  );
+}
+
 async function _fetchContasPagar(
   page = 1,
   pageSize = 50,

@@ -31,6 +31,13 @@ export async function getClientes(
   );
 }
 
+export function prefetchNextPage(page: number, pageSize: number, search?: string) {
+  void cacheList(
+    CACHE_KEYS.list("clientes", page + 1, pageSize, search || ""),
+    () => _fetchClientes(page + 1, pageSize, search)
+  );
+}
+
 async function _fetchClientes(
   page = 1,
   pageSize = 50,

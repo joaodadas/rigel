@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { getContasPagar } from "@/lib/queries/contas-pagar";
+import { getContasPagar, prefetchNextPage } from "@/lib/queries/contas-pagar";
 import { ContasPagarTable } from "./contas-pagar-table";
 
 interface Props {
@@ -20,6 +20,9 @@ export default async function ContasPagarPage({ searchParams }: Props) {
   const search = params.search || "";
 
   const { data, total } = await getContasPagar(page, pageSize, search || undefined);
+  if (data.length === pageSize) {
+    prefetchNextPage(page, pageSize, search || undefined);
+  }
 
   return (
     <div className="space-y-6">

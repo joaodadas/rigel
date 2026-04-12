@@ -28,6 +28,13 @@ export async function getPedidos(
   );
 }
 
+export function prefetchNextPage(page: number, pageSize: number, search?: string) {
+  void cacheList(
+    CACHE_KEYS.list("pedidos", page + 1, pageSize, search || ""),
+    () => _fetchPedidos(page + 1, pageSize, search)
+  );
+}
+
 async function _fetchPedidos(
   page = 1,
   pageSize = 50,
