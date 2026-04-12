@@ -1,4 +1,4 @@
-import { unstable_cache } from "next/cache";
+import { cacheGetOrFetchSWR, CACHE_KEYS } from "@/lib/redis/client";
 import { createSupabaseServer } from "@/lib/supabase/client";
 import { supabaseFetchAll } from "@/lib/supabase/fetch-all";
 
@@ -12,11 +12,9 @@ export interface AdminKPIs {
   vendedoresAtivos: number;
 }
 
-export const getAdminKPIs = unstable_cache(
-  _getAdminKPIs,
-  ["admin-kpis"],
-  { revalidate: 300, tags: ["kpi-admin"] }
-);
+export async function getAdminKPIs(): Promise<AdminKPIs> {
+  return cacheGetOrFetchSWR(CACHE_KEYS.kpiAdmin, _getAdminKPIs);
+}
 
 async function _getAdminKPIs(): Promise<AdminKPIs> {
   const supabase = createSupabaseServer();
