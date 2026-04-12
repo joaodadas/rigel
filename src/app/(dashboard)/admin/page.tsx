@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getAdminKPIs } from "@/lib/queries/admin-kpis";
 import { KpiCard } from "@/components/dashboard/kpi-card";
@@ -22,9 +21,7 @@ const formatNumber = (value: number) =>
   new Intl.NumberFormat("pt-BR").format(value);
 
 export default async function AdminPage() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getSession();
 
   if (!session) {
     redirect("/login");

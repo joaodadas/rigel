@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import {
   getComercialKPIs,
@@ -16,9 +15,7 @@ interface PageProps {
 }
 
 export default async function ComercialBIPage({ searchParams }: PageProps) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getSession();
 
   if (!session) {
     redirect("/login");

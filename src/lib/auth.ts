@@ -1,3 +1,5 @@
+import { cache } from "react";
+import { headers } from "next/headers";
 import { betterAuth } from "better-auth";
 import { Pool } from "pg";
 import { nextCookies } from "better-auth/next-js";
@@ -37,4 +39,12 @@ export const auth = betterAuth({
     }),
     nextCookies(),
   ],
+});
+
+/**
+ * Deduplicated session getter — safe to call from layout AND page
+ * within the same request. React.cache ensures the DB is hit only once.
+ */
+export const getSession = cache(async () => {
+  return auth.api.getSession({ headers: await headers() });
 });

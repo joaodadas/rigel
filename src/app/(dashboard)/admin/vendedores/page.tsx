@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getVendedores } from "@/lib/queries/vendedores";
 import { VendedoresTable } from "./vendedores-table";
@@ -9,9 +8,7 @@ interface Props {
 }
 
 export default async function VendedoresPage({ searchParams }: Props) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getSession();
 
   if (!session) {
     redirect("/login");

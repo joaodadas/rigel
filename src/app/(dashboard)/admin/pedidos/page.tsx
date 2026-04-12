@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { headers } from "next/headers";
+import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getPedidos } from "@/lib/queries/pedidos";
 import { PedidosTable } from "./pedidos-table";
@@ -9,9 +8,7 @@ interface Props {
 }
 
 export default async function PedidosPage({ searchParams }: Props) {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getSession();
 
   if (!session) {
     redirect("/login");
