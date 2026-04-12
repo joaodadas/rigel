@@ -1,9 +1,18 @@
 import { Redis } from "@upstash/redis";
 
-export const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-});
+let _redis: Redis | null = null;
+
+function getRedis(): Redis | null {
+  if (_redis) return _redis;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  _redis = new Redis({ url, token });
+  return _redis;
+}
+
+/** @deprecated Use cacheGetOrFetchSWR instead. Kept for backward compat. */
+export const redis = { del: async (...keys: string[]) => { getRedis()?.del(...keys); } } as unknown as Redis;
 
 const DEFAULT_TTL = 60 * 60; // 1h hard TTL
 
@@ -12,7 +21,9 @@ const DEFAULT_TTL = 60 * 60; // 1h hard TTL
 // ---------------------------------------------------------------------------
 
 export async function cacheGet<T>(key: string): Promise<T | null> {
-  return redis.get<T>(key);
+  const r = getRedis();
+  if (!r) return null;
+  return r.get<T>(key);
 }
 
 export async function cacheSet<T>(
@@ -20,11 +31,15 @@ export async function cacheSet<T>(
   value: T,
   ttl = DEFAULT_TTL
 ): Promise<void> {
-  await redis.set(key, value, { ex: ttl });
+  const r = getRedis();
+  if (!r) return;
+  await r.set(key, value, { ex: ttl });
 }
 
 export async function cacheDelete(key: string): Promise<void> {
-  await redis.del(key);
+  const r = getRedis();
+  if (!r) return;
+  await r.del(key);
 }
 
 // ---------------------------------------------------------------------------
@@ -168,10 +183,11 @@ export async function invalidateAllCaches(): Promise<void> {
     }
   }
 
-  // Delete all in parallel (redis.del accepts multiple keys)
-  if (keys.length > 0) {
+  // Delete all in parallel
+  const r = getRedis();
+  if (r && keys.length > 0) {
     try {
-      await redis.del(...keys);
+      await r.del(...keys);
     } catch (e) {
       console.warn("[cache] invalidateAllCaches failed:", e);
     }
