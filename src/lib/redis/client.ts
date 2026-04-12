@@ -46,17 +46,29 @@ export async function cacheGetOrFetchSWR<T>(
   fetcher: () => Promise<T>,
   ttl = DEFAULT_TTL
 ): Promise<T> {
-  const cached = await cacheGet<CacheEnvelope<T>>(key);
-  if (cached !== null && cached.data !== undefined) {
-    return cached.data;
+  // Try Redis cache — gracefully skip if Redis is unavailable
+  try {
+    const cached = await cacheGet<CacheEnvelope<T>>(key);
+    if (cached !== null && cached.data !== undefined) {
+      return cached.data;
+    }
+  } catch (e) {
+    console.warn(`[cache] Redis read failed for ${key}:`, e);
   }
 
   const fresh = await fetcher();
-  const envelope: CacheEnvelope<T> = {
-    data: fresh,
-    fetchedAt: Date.now(),
-  };
-  await cacheSet(key, envelope, ttl);
+
+  // Store in cache — don't block on failure
+  try {
+    const envelope: CacheEnvelope<T> = {
+      data: fresh,
+      fetchedAt: Date.now(),
+    };
+    await cacheSet(key, envelope, ttl);
+  } catch (e) {
+    console.warn(`[cache] Redis write failed for ${key}:`, e);
+  }
+
   return fresh;
 }
 
@@ -158,7 +170,11 @@ export async function invalidateAllCaches(): Promise<void> {
 
   // Delete all in parallel (redis.del accepts multiple keys)
   if (keys.length > 0) {
-    await redis.del(...keys);
+    try {
+      await redis.del(...keys);
+    } catch (e) {
+      console.warn("[cache] invalidateAllCaches failed:", e);
+    }
   }
 }
 
