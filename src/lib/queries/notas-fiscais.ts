@@ -1,4 +1,5 @@
 import { createSupabaseServer } from "@/lib/supabase/client";
+import { cacheList, CACHE_KEYS } from "@/lib/redis/client";
 
 export interface NotaFiscalRow {
   id_venda: number;
@@ -18,6 +19,17 @@ export interface NotasFiscaisResult {
 }
 
 export async function getNotasFiscais(
+  page = 1,
+  pageSize = 50,
+  search?: string
+): Promise<NotasFiscaisResult> {
+  return cacheList(
+    CACHE_KEYS.list("notas-fiscais", page, pageSize, search || ""),
+    () => _fetchNotasFiscais(page, pageSize, search)
+  );
+}
+
+async function _fetchNotasFiscais(
   page = 1,
   pageSize = 50,
   search?: string

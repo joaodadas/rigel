@@ -1,4 +1,5 @@
 import { createSupabaseServer } from "@/lib/supabase/client";
+import { cacheList, CACHE_KEYS } from "@/lib/redis/client";
 
 export interface ClienteRow {
   id_cliente: number;
@@ -20,6 +21,17 @@ export interface ClientesResult {
 }
 
 export async function getClientes(
+  page = 1,
+  pageSize = 50,
+  search?: string
+): Promise<ClientesResult> {
+  return cacheList(
+    CACHE_KEYS.list("clientes", page, pageSize, search || ""),
+    () => _fetchClientes(page, pageSize, search)
+  );
+}
+
+async function _fetchClientes(
   page = 1,
   pageSize = 50,
   search?: string

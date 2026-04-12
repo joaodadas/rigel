@@ -1,4 +1,5 @@
 import { createSupabaseServer } from "@/lib/supabase/client";
+import { cacheList, CACHE_KEYS } from "@/lib/redis/client";
 
 export interface OrcamentoRow {
   id_orcamento: number;
@@ -17,6 +18,17 @@ export interface OrcamentosResult {
 }
 
 export async function getOrcamentos(
+  page = 1,
+  pageSize = 50,
+  search?: string
+): Promise<OrcamentosResult> {
+  return cacheList(
+    CACHE_KEYS.list("orcamentos", page, pageSize, search || ""),
+    () => _fetchOrcamentos(page, pageSize, search)
+  );
+}
+
+async function _fetchOrcamentos(
   page = 1,
   pageSize = 50,
   search?: string

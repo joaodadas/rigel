@@ -1,4 +1,5 @@
 import { createSupabaseServer } from "@/lib/supabase/client";
+import { cacheList, CACHE_KEYS } from "@/lib/redis/client";
 
 export interface ContaPagarRow {
   id_conta_pag: number;
@@ -20,6 +21,17 @@ export interface ContasPagarResult {
 }
 
 export async function getContasPagar(
+  page = 1,
+  pageSize = 50,
+  search?: string
+): Promise<ContasPagarResult> {
+  return cacheList(
+    CACHE_KEYS.list("contas-pagar", page, pageSize, search || ""),
+    () => _fetchContasPagar(page, pageSize, search)
+  );
+}
+
+async function _fetchContasPagar(
   page = 1,
   pageSize = 50,
   search?: string
