@@ -356,7 +356,7 @@ export function ComercialDashboard({
             <SelectTrigger className="w-[140px]">
               <SelectValue placeholder="Mes" />
             </SelectTrigger>
-            <SelectContent align="end">
+            <SelectContent align="end" alignItemWithTrigger={false}>
               {MESES.map((m) => (
                 <SelectItem key={m.value} value={String(m.value)}>
                   {m.label}
@@ -372,7 +372,7 @@ export function ComercialDashboard({
             <SelectTrigger className="w-[100px]">
               <SelectValue placeholder="Ano" />
             </SelectTrigger>
-            <SelectContent align="end">
+            <SelectContent align="end" alignItemWithTrigger={false}>
               {[ano - 1, ano].map((y) => (
                 <SelectItem key={y} value={String(y)}>
                   {y}
@@ -388,7 +388,7 @@ export function ComercialDashboard({
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="Vendedor" />
             </SelectTrigger>
-            <SelectContent align="end">
+            <SelectContent align="end" alignItemWithTrigger={false}>
               <SelectItem value="todos">Todos os vendedores</SelectItem>
               {vendedores.map((v) => (
                 <SelectItem key={v} value={v}>
