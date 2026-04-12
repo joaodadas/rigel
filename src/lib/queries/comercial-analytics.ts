@@ -1,14 +1,11 @@
-import { unstable_cache } from "next/cache";
 import { createSupabaseServer } from "@/lib/supabase/client";
 import { supabaseFetchAll } from "@/lib/supabase/fetch-all";
+import { cacheGetOrFetchSWR, CACHE_KEYS } from "@/lib/redis/client";
 import {
   METAS_VENDEDORES,
   getMetaMensal,
-  getMetaAcumulada,
 } from "@/lib/config/metas-2026";
 import { mapVendedorToMeta } from "@/lib/config/vendedores-map";
-
-const CACHE_TTL = 300; // 5 minutes
 
 // ---------------------------------------------------------------------------
 // Types
@@ -105,16 +102,21 @@ function findMetaAnual(nomeVendedor: string): number {
 }
 
 // ---------------------------------------------------------------------------
-// 1. getComercialKPIs
+// 1. getComercialKPIs  (RPC-based)
 // ---------------------------------------------------------------------------
 
-export const getComercialKPIs = unstable_cache(
-  _getComercialKPIs,
-  ["comercial-kpis"],
-  { revalidate: CACHE_TTL, tags: ["bi-comercial"] }
-);
+export async function getComercialKPIs(
+  mesInicio: number,
+  mesFim: number,
+  ano: number
+): Promise<ComercialKPIs> {
+  return cacheGetOrFetchSWR(
+    CACHE_KEYS.biKpis(mesInicio, mesFim, ano),
+    () => _fetchComercialKPIs(mesInicio, mesFim, ano)
+  );
+}
 
-async function _getComercialKPIs(
+async function _fetchComercialKPIs(
   mesInicio: number,
   mesFim: number,
   ano: number
@@ -122,64 +124,23 @@ async function _getComercialKPIs(
   const supabase = createSupabaseServer();
   const { start, end } = buildDateRange(mesInicio, mesFim, ano);
 
-  // 6 months ago for "active client" threshold
-  const now = new Date();
-  const sixMonthsAgo = toDateStr(
-    new Date(now.getFullYear(), now.getMonth() - 6, now.getDate())
-  );
+  const { data, error } = await supabase.rpc("rpc_comercial_kpis", {
+    p_start_date: start,
+    p_end_date: end,
+  });
 
-  const [pedidos, clientesAtivosRows, baseTotalResult] =
-    await Promise.all([
-      // Pedidos atendidos in the period (ALL rows, not just first 1000)
-      supabaseFetchAll<{ valor_total_nota: string }>(
-        (from, to) =>
-          supabase
-            .from("pedidos")
-            .select("valor_total_nota")
-            .eq("status_pedido", "Atendido")
-            .eq("lixeira", "Nao")
-            .gte("data_pedido", start)
-            .lte("data_pedido", end)
-            .range(from, to)
-      ),
+  if (error) throw new Error(`rpc_comercial_kpis failed: ${error.message}`);
 
-      // Clientes ativos: distinct id_cliente with pedido in last 6 months
-      supabaseFetchAll<{ id_cliente: string }>(
-        (from, to) =>
-          supabase
-            .from("pedidos")
-            .select("id_cliente")
-            .eq("status_pedido", "Atendido")
-            .eq("lixeira", "Nao")
-            .gte("data_pedido", sixMonthsAgo)
-            .range(from, to)
-      ),
+  const row = Array.isArray(data) ? data[0] : data;
+  const faturamentoB2B = Number(row.faturamento) || 0;
+  const totalPedidos = Number(row.total_pedidos) || 0;
+  const clientesAtivos = Number(row.clientes_ativos) || 0;
+  const baseTotal = Number(row.base_total) || 0;
 
-      // Base total: all clients not in trash
-      supabase
-        .from("clientes")
-        .select("*", { count: "exact", head: true })
-        .eq("lixeira", "Nao"),
-    ]);
-
-  const faturamentoB2B = pedidos.reduce(
-    (sum, row) => sum + (Number(row.valor_total_nota) || 0),
-    0
-  );
-  const totalPedidos = pedidos.length;
   const ticketMedio = totalPedidos > 0 ? faturamentoB2B / totalPedidos : 0;
-
   const metaB2BAcumulada = sumMetaAllVendedores(mesInicio, mesFim);
   const pctAtingimento =
     metaB2BAcumulada > 0 ? (faturamentoB2B / metaB2BAcumulada) * 100 : 0;
-
-  // Distinct active clients
-  const activeClientIds = new Set(
-    clientesAtivosRows.map((r) => r.id_cliente)
-  );
-  const clientesAtivos = activeClientIds.size;
-
-  const baseTotal = baseTotalResult.count ?? 0;
   const clientesInativos = Math.max(0, baseTotal - clientesAtivos);
 
   return {
@@ -195,16 +156,21 @@ async function _getComercialKPIs(
 }
 
 // ---------------------------------------------------------------------------
-// 2. getPedidosPorVendedor
+// 2. getPedidosPorVendedor  (JS logic, Redis cache)
 // ---------------------------------------------------------------------------
 
-export const getPedidosPorVendedor = unstable_cache(
-  _getPedidosPorVendedor,
-  ["pedidos-vendedor"],
-  { revalidate: CACHE_TTL, tags: ["bi-comercial"] }
-);
+export async function getPedidosPorVendedor(
+  mesInicio: number,
+  mesFim: number,
+  ano: number
+): Promise<PedidoVendedor[]> {
+  return cacheGetOrFetchSWR(
+    CACHE_KEYS.biVendedor(mesInicio, mesFim, ano),
+    () => _fetchPedidosPorVendedor(mesInicio, mesFim, ano)
+  );
+}
 
-async function _getPedidosPorVendedor(
+async function _fetchPedidosPorVendedor(
   mesInicio: number,
   mesFim: number,
   ano: number
@@ -258,16 +224,21 @@ async function _getPedidosPorVendedor(
 }
 
 // ---------------------------------------------------------------------------
-// 3. getPedidosPorRegiao
+// 3. getPedidosPorRegiao  (JS logic, Redis cache)
 // ---------------------------------------------------------------------------
 
-export const getPedidosPorRegiao = unstable_cache(
-  _getPedidosPorRegiao,
-  ["pedidos-regiao"],
-  { revalidate: CACHE_TTL, tags: ["bi-comercial"] }
-);
+export async function getPedidosPorRegiao(
+  mesInicio: number,
+  mesFim: number,
+  ano: number
+): Promise<PedidoRegiao[]> {
+  return cacheGetOrFetchSWR(
+    CACHE_KEYS.biRegiao(mesInicio, mesFim, ano),
+    () => _fetchPedidosPorRegiao(mesInicio, mesFim, ano)
+  );
+}
 
-async function _getPedidosPorRegiao(
+async function _fetchPedidosPorRegiao(
   mesInicio: number,
   mesFim: number,
   ano: number
@@ -326,191 +297,109 @@ async function _getPedidosPorRegiao(
 }
 
 // ---------------------------------------------------------------------------
-// 4. getClientesAtivosVendedor
+// 4. getClientesAtivosVendedor  (RPC-based)
 // ---------------------------------------------------------------------------
 
-export const getClientesAtivosVendedor = unstable_cache(
-  _getClientesAtivosVendedor,
-  ["clientes-ativos-vendedor"],
-  { revalidate: CACHE_TTL, tags: ["bi-comercial"] }
-);
+export async function getClientesAtivosVendedor(): Promise<
+  ClienteVendedorStatus[]
+> {
+  return cacheGetOrFetchSWR(
+    CACHE_KEYS.biClientesStatus,
+    _fetchClientesAtivosVendedor
+  );
+}
 
-async function _getClientesAtivosVendedor(): Promise<
+async function _fetchClientesAtivosVendedor(): Promise<
   ClienteVendedorStatus[]
 > {
   const supabase = createSupabaseServer();
-  const now = new Date();
-  const sixMonthsAgo = toDateStr(
-    new Date(now.getFullYear(), now.getMonth() - 6, now.getDate())
+
+  const { data, error } = await supabase.rpc("rpc_clientes_status_vendedor");
+
+  if (error)
+    throw new Error(`rpc_clientes_status_vendedor failed: ${error.message}`);
+
+  const rows = Array.isArray(data) ? data : [];
+  return rows.map(
+    (r: {
+      vendedor: string;
+      total: number | string;
+      ativos: number | string;
+      inativos: number | string;
+      pct_ativacao: number | string;
+    }) => ({
+      vendedor: String(r.vendedor),
+      total: Number(r.total) || 0,
+      ativos: Number(r.ativos) || 0,
+      inativos: Number(r.inativos) || 0,
+      pctAtivacao: Number(r.pct_ativacao) || 0,
+    })
   );
-
-  const [clientes, recentPedidos] = await Promise.all([
-    // All clients with their vendedor
-    supabaseFetchAll<{ id_cliente: string; vendedor_cliente: string }>(
-      (from, to) =>
-        supabase
-          .from("clientes")
-          .select("id_cliente, vendedor_cliente")
-          .eq("lixeira", "Nao")
-          .range(from, to)
-    ),
-
-    // Recent pedidos (last 6 months) to determine active clients
-    supabaseFetchAll<{ id_cliente: string }>(
-      (from, to) =>
-        supabase
-          .from("pedidos")
-          .select("id_cliente")
-          .eq("status_pedido", "Atendido")
-          .eq("lixeira", "Nao")
-          .gte("data_pedido", sixMonthsAgo)
-          .range(from, to)
-    ),
-  ]);
-
-  // Set of active client IDs
-  const activeIds = new Set(
-    recentPedidos.map((r: { id_cliente: string }) => String(r.id_cliente))
-  );
-
-  // Group by vendedor
-  const groups: Record<string, { total: number; ativos: number }> = {};
-  for (const c of clientes) {
-    const vendedor =
-      (c.vendedor_cliente as string)?.trim() || "Sem vendedor";
-    if (!groups[vendedor]) groups[vendedor] = { total: 0, ativos: 0 };
-    groups[vendedor].total += 1;
-    if (activeIds.has(String(c.id_cliente))) {
-      groups[vendedor].ativos += 1;
-    }
-  }
-
-  return Object.entries(groups)
-    .map(([vendedor, agg]) => ({
-      vendedor,
-      total: agg.total,
-      ativos: agg.ativos,
-      inativos: agg.total - agg.ativos,
-      pctAtivacao: agg.total > 0 ? (agg.ativos / agg.total) * 100 : 0,
-    }))
-    .sort((a, b) => b.total - a.total);
 }
 
 // ---------------------------------------------------------------------------
-// 5. getClientesInativos
+// 5. getClientesInativos  (RPC-based)
 // ---------------------------------------------------------------------------
 
-export const getClientesInativos = unstable_cache(
-  _getClientesInativos,
-  ["clientes-inativos"],
-  { revalidate: CACHE_TTL, tags: ["bi-comercial"] }
-);
+export async function getClientesInativos(
+  vendedorFilter?: string
+): Promise<ClienteInativo[]> {
+  const key = vendedorFilter
+    ? `${CACHE_KEYS.biClientesInativos}:${vendedorFilter}`
+    : CACHE_KEYS.biClientesInativos;
 
-async function _getClientesInativos(
+  return cacheGetOrFetchSWR(key, () =>
+    _fetchClientesInativos(vendedorFilter)
+  );
+}
+
+async function _fetchClientesInativos(
   vendedorFilter?: string
 ): Promise<ClienteInativo[]> {
   const supabase = createSupabaseServer();
-  const now = new Date();
-  const sixMonthsAgo = toDateStr(
-    new Date(now.getFullYear(), now.getMonth() - 6, now.getDate())
+
+  const { data, error } = await supabase.rpc("rpc_clientes_inativos", {
+    p_vendedor: vendedorFilter || null,
+  });
+
+  if (error)
+    throw new Error(`rpc_clientes_inativos failed: ${error.message}`);
+
+  const rows = Array.isArray(data) ? data : [];
+  return rows.map(
+    (r: {
+      nome: string;
+      vendedor: string;
+      ultimo_pedido: string | null;
+      valor_ultimo_pedido: number | string;
+      dias_sem_compra: number | string;
+    }) => ({
+      nome: String(r.nome),
+      vendedor: String(r.vendedor),
+      ultimoPedido: r.ultimo_pedido ? String(r.ultimo_pedido) : null,
+      valorUltimoPedido: Number(r.valor_ultimo_pedido) || 0,
+      diasSemCompra: Number(r.dias_sem_compra) || 0,
+    })
   );
-
-  // Fetch clients and pedidos in parallel (ALL rows via pagination)
-  const [clientes, pedidos] = await Promise.all([
-    supabaseFetchAll<{
-      id_cliente: string;
-      razao_cliente: string;
-      fantasia_cliente: string | null;
-      vendedor_cliente: string;
-    }>((from, to) => {
-      let q = supabase
-        .from("clientes")
-        .select("id_cliente, razao_cliente, fantasia_cliente, vendedor_cliente")
-        .eq("lixeira", "Nao");
-      if (vendedorFilter) {
-        q = q.eq("vendedor_cliente", vendedorFilter);
-      }
-      return q.range(from, to);
-    }),
-
-    // All pedidos atendidos (we need the latest per client)
-    supabaseFetchAll<{
-      id_cliente: string;
-      data_pedido: string;
-      valor_total_nota: string;
-    }>(
-      (from, to) =>
-        supabase
-          .from("pedidos")
-          .select("id_cliente, data_pedido, valor_total_nota")
-          .eq("status_pedido", "Atendido")
-          .eq("lixeira", "Nao")
-          .order("data_pedido", { ascending: false })
-          .range(from, to)
-    ),
-  ]);
-
-  // Build last-pedido map per client
-  const lastPedido: Record<
-    string,
-    { data: string; valor: number }
-  > = {};
-  for (const p of pedidos) {
-    const cid = String(p.id_cliente);
-    if (!lastPedido[cid]) {
-      lastPedido[cid] = {
-        data: String(p.data_pedido ?? ""),
-        valor: Number(p.valor_total_nota) || 0,
-      };
-    }
-  }
-
-  const today = now.getTime();
-  const result: ClienteInativo[] = [];
-
-  for (const c of clientes) {
-    const cid = String(c.id_cliente);
-    const last = lastPedido[cid];
-
-    // Inactive = no pedido OR last pedido > 6 months ago
-    const isInactive =
-      !last || !last.data || last.data < sixMonthsAgo;
-
-    if (!isInactive) continue;
-
-    const ultimoPedidoDate = last?.data || null;
-    const diasSemCompra = ultimoPedidoDate
-      ? Math.floor(
-          (today - new Date(ultimoPedidoDate).getTime()) /
-            (1000 * 60 * 60 * 24)
-        )
-      : 9999; // never purchased
-
-    result.push({
-      nome: (c.fantasia_cliente || c.razao_cliente) ?? "",
-      vendedor: (c.vendedor_cliente as string) ?? "",
-      ultimoPedido: ultimoPedidoDate,
-      valorUltimoPedido: last?.valor ?? 0,
-      diasSemCompra,
-    });
-  }
-
-  return result.sort((a, b) => b.diasSemCompra - a.diasSemCompra);
 }
 
 // ---------------------------------------------------------------------------
-// 6. getProdutosEvolucao
+// 6. getProdutosEvolucao  (JS logic, Redis cache)
 // ---------------------------------------------------------------------------
 // TODO: Product-level breakdown requires product-pedido relation table to be
 //       synced. For now, returns monthly faturamento totals.
 
-export const getProdutosEvolucao = unstable_cache(
-  _getProdutosEvolucao,
-  ["produtos-evolucao"],
-  { revalidate: CACHE_TTL, tags: ["bi-comercial"] }
-);
+export async function getProdutosEvolucao(
+  meses: number = 6,
+  _produtoFilter?: string
+): Promise<ProdutoEvolucao[]> {
+  return cacheGetOrFetchSWR(
+    CACHE_KEYS.biEvolucao(meses),
+    () => _fetchProdutosEvolucao(meses, _produtoFilter)
+  );
+}
 
-async function _getProdutosEvolucao(
+async function _fetchProdutosEvolucao(
   meses: number = 6,
   _produtoFilter?: string
 ): Promise<ProdutoEvolucao[]> {
