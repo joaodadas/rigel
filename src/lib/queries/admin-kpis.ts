@@ -1,6 +1,5 @@
 import { cacheGetOrFetchSWR, CACHE_KEYS } from "@/lib/redis/client";
 import { createSupabaseServer } from "@/lib/supabase/client";
-import { supabaseFetchAll } from "@/lib/supabase/fetch-all";
 
 export interface AdminKPIs {
   faturamentoMes: number;
@@ -13,10 +12,10 @@ export interface AdminKPIs {
 }
 
 export async function getAdminKPIs(): Promise<AdminKPIs> {
-  return cacheGetOrFetchSWR(CACHE_KEYS.kpiAdmin, _getAdminKPIs);
+  return cacheGetOrFetchSWR(CACHE_KEYS.kpiAdmin, _fetchAdminKPIs);
 }
 
-async function _getAdminKPIs(): Promise<AdminKPIs> {
+async function _fetchAdminKPIs(): Promise<AdminKPIs> {
   const supabase = createSupabaseServer();
 
   const now = new Date();
@@ -26,124 +25,40 @@ async function _getAdminKPIs(): Promise<AdminKPIs> {
   const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
     .toISOString()
     .split("T")[0];
-
   const today = now.toISOString().split("T")[0];
   const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
     .toISOString()
     .split("T")[0];
 
-  const [
-    faturamentoRows,
-    pedidosResult,
-    clientesAtivosResult,
-    clientesInativosResult,
-    contasReceberRows,
-    contasPagarRows,
-    vendedoresResult,
-  ] = await Promise.all([
-    // 1. Faturamento do Mes - SUM valor_total_nota from pedidos (Atendido, current month)
-    supabaseFetchAll<{ valor_total_nota: string }>(
-      (from, to) =>
-        supabase
-          .from("pedidos")
-          .select("valor_total_nota")
-          .eq("status_pedido", "Atendido")
-          .eq("lixeira", "Nao")
-          .gte("data_pedido", firstDayOfMonth)
-          .lte("data_pedido", lastDayOfMonth)
-          .range(from, to)
-    ),
+  const { data, error } = await supabase.rpc("rpc_admin_kpis", {
+    p_first_day: firstDayOfMonth,
+    p_last_day: lastDayOfMonth,
+    p_today: today,
+    p_seven_days: sevenDaysFromNow,
+  });
 
-    // 2. Pedidos do Mes - COUNT pedidos atendidos (current month)
-    supabase
-      .from("pedidos")
-      .select("*", { count: "exact", head: true })
-      .eq("status_pedido", "Atendido")
-      .eq("lixeira", "Nao")
-      .gte("data_pedido", firstDayOfMonth)
-      .lte("data_pedido", lastDayOfMonth),
+  if (error) {
+    console.error("[rpc_admin_kpis] error:", error);
+    return {
+      faturamentoMes: 0,
+      pedidosMes: 0,
+      clientesAtivos: 0,
+      clientesInativos: 0,
+      contasReceberAberto: 0,
+      contasPagarVencendo: 0,
+      vendedoresAtivos: 0,
+    };
+  }
 
-    // 3. Clientes Ativos
-    supabase
-      .from("clientes")
-      .select("*", { count: "exact", head: true })
-      .eq("lixeira", "Nao")
-      .eq("situacao_cliente", "Ativo"),
-
-    // 4. Clientes Inativos
-    supabase
-      .from("clientes")
-      .select("*", { count: "exact", head: true })
-      .eq("lixeira", "Nao")
-      .neq("situacao_cliente", "Ativo"),
-
-    // 5. Contas a Receber em Aberto - SUM valor_rec
-    supabaseFetchAll<{ valor_rec: string }>(
-      (from, to) =>
-        supabase
-          .from("contas_receber")
-          .select("valor_rec")
-          .eq("liquidado_rec", "Nao")
-          .eq("lixeira", "Nao")
-          .range(from, to)
-    ),
-
-    // 6. Contas a Pagar Vencendo (proximos 7 dias) - SUM valor_pag
-    supabaseFetchAll<{ valor_pag: string }>(
-      (from, to) =>
-        supabase
-          .from("contas_pagar")
-          .select("valor_pag")
-          .eq("liquidado_pag", "Nao")
-          .eq("lixeira", "Nao")
-          .gte("vencimento_pag", today)
-          .lte("vencimento_pag", sevenDaysFromNow)
-          .range(from, to)
-    ),
-
-    // 7. Vendedores Ativos
-    supabase
-      .from("vendedores")
-      .select("*", { count: "exact", head: true })
-      .eq("situacao_vendedor", "Ativo")
-      .eq("lixeira", "Nao"),
-  ]);
-
-  // Calculate faturamento (sum of valor_total_nota)
-  const faturamentoMes = faturamentoRows.reduce(
-    (sum, row) => sum + (Number(row.valor_total_nota) || 0),
-    0
-  );
-
-  // Pedidos count — now also filtered by "Atendido" to match faturamento
-  const pedidosMes = pedidosResult.count ?? 0;
-
-  // Clientes counts
-  const clientesAtivos = clientesAtivosResult.count ?? 0;
-  const clientesInativos = clientesInativosResult.count ?? 0;
-
-  // Contas a receber (sum of valor_rec)
-  const contasReceberAberto = contasReceberRows.reduce(
-    (sum, row) => sum + (Number(row.valor_rec) || 0),
-    0
-  );
-
-  // Contas a pagar vencendo (sum of valor_pag)
-  const contasPagarVencendo = contasPagarRows.reduce(
-    (sum, row) => sum + (Number(row.valor_pag) || 0),
-    0
-  );
-
-  // Vendedores ativos count
-  const vendedoresAtivos = vendedoresResult.count ?? 0;
+  const row = Array.isArray(data) ? data[0] : data;
 
   return {
-    faturamentoMes,
-    pedidosMes,
-    clientesAtivos,
-    clientesInativos,
-    contasReceberAberto,
-    contasPagarVencendo,
-    vendedoresAtivos,
+    faturamentoMes: Number(row.faturamento_mes) || 0,
+    pedidosMes: Number(row.pedidos_mes) || 0,
+    clientesAtivos: Number(row.clientes_ativos) || 0,
+    clientesInativos: Number(row.clientes_inativos) || 0,
+    contasReceberAberto: Number(row.contas_receber_aberto) || 0,
+    contasPagarVencendo: Number(row.contas_pagar_vencendo) || 0,
+    vendedoresAtivos: Number(row.vendedores_ativos) || 0,
   };
 }
