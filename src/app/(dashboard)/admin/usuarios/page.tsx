@@ -12,6 +12,13 @@ export default async function UsuariosPage() {
     query: { limit: 200, offset: 0 },
   })
 
+  // Serialize Date objects so they can be passed to the client component
+  const users = result.users.map((u) => ({
+    ...u,
+    createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : u.createdAt,
+    updatedAt: u.updatedAt instanceof Date ? u.updatedAt.toISOString() : u.updatedAt,
+  }))
+
   return (
     <div className="space-y-6">
       <div>
@@ -20,7 +27,7 @@ export default async function UsuariosPage() {
           Gerencie os usuários do sistema
         </p>
       </div>
-      <UsuariosTable data={result.users} />
+      <UsuariosTable data={users} />
     </div>
   )
 }

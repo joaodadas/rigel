@@ -21,6 +21,7 @@ import {
   BarChart3,
 } from "lucide-react"
 
+import type { SessionUser } from "@/components/dashboard-shell"
 import { authClient } from "@/lib/auth-client"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -174,15 +175,14 @@ function NavCollapsibleGroup({
 // Main sidebar
 // ---------------------------------------------------------------------------
 
-export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
-  const { data: session } = authClient.useSession()
+export function AppSidebar({ user, ...props }: React.ComponentProps<typeof Sidebar> & { user: SessionUser }) {
   const pathname = usePathname()
   const router = useRouter()
   const { state } = useSidebar()
 
-  const role = (session?.user?.role as string) ?? "comercial"
-  const userName = session?.user?.name ?? "Usuário"
-  const userEmail = session?.user?.email ?? ""
+  const role = user.role
+  const userName = user.name
+  const userEmail = user.email
   const navEntries = navByRole[role] ?? navByRole.comercial
 
   const initials = userName

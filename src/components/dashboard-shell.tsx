@@ -8,10 +8,16 @@ import {
 } from "@/components/ui/sidebar"
 import { ThemeToggle } from "@/components/theme-toggle"
 
-export function DashboardShell({ children }: { children: React.ReactNode }) {
+export type SessionUser = {
+  name: string
+  email: string
+  role: string
+}
+
+export function DashboardShell({ children, user }: { children: React.ReactNode; user: SessionUser }) {
   return (
     <SidebarProvider>
-      <AppSidebar />
+      <AppSidebar user={user} />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 bg-background/80 backdrop-blur-sm px-4 shadow-[0_1px_2px_0_rgb(0_0_0/0.03)]">
           <SidebarTrigger className="-ml-1" />
