@@ -121,6 +121,15 @@ export const CACHE_KEYS = {
   // BI evolucao (dynamic: meses)
   biEvolucao: (meses: number) => `bi:evolucao:${meses}`,
 
+  // Top 20 clients
+  biTop20: (mi: number, mf: number, a: number) => `bi:top20:${mi}:${mf}:${a}`,
+  biTop20VI: (mi: number, mf: number, a: number) =>
+    `bi:top20vi:${mi}:${mf}:${a}`,
+
+  // Previous month vendedor data (for delta calculation)
+  biVendedorPrev: (mi: number, mf: number, a: number) =>
+    `bi:vendedor-prev:${mi}:${mf}:${a}`,
+
   // Listing queries (entity, page, pageSize, search)
   list: (entity: string, page: number, size: number, search?: string) =>
     `list:${entity}:p${page}:s${size}:${search || "_"}`,
