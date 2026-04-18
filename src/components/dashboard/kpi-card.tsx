@@ -21,6 +21,7 @@ export function KpiCard({
 }: KpiCardProps) {
   return (
     <Card
+      data-testid="kpi-card"
       className="relative opacity-0 border border-border/50 shadow-[0_1px_3px_0_rgb(0_0_0/0.04),0_2px_8px_0_rgb(0_0_0/0.04)]"
       style={{
         animation: "kpi-enter 0.5s ease-out forwards",
