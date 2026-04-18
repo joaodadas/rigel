@@ -3,8 +3,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   Tooltip,
@@ -53,6 +51,14 @@ import type {
   TopCliente,
 } from "@/lib/queries/comercial-analytics";
 import { BiFilters, getMesLabel } from "./components/bi-filters";
+import { PedidosVendedorSection } from "./components/pedidos-vendedor-section";
+import {
+  formatBRL,
+  formatBRLFull,
+  formatNumber,
+  formatPct,
+  ChartTooltipContent,
+} from "./components/formatters";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -72,33 +78,6 @@ interface ComercialDashboardProps {
   defaultAno: number;
   isAcumulado: boolean;
 }
-
-// ---------------------------------------------------------------------------
-// Formatters
-// ---------------------------------------------------------------------------
-
-const formatBRL = (value: number) =>
-  new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-
-const formatBRLFull = (value: number) =>
-  new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(value);
-
-const formatNumber = (value: number) =>
-  new Intl.NumberFormat("pt-BR").format(value);
-
-const formatPct = (value: number) =>
-  new Intl.NumberFormat("pt-BR", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  }).format(value) + "%";
 
 const MESES = [
   { value: 1, label: "Janeiro" },
@@ -131,36 +110,6 @@ const MESES_CURTOS: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Chart tooltip
-// ---------------------------------------------------------------------------
-
-function ChartTooltipContent({
-  active,
-  payload,
-  label,
-}: {
-  active?: boolean;
-  payload?: Array<{ name: string; value: number; color: string }>;
-  label?: string;
-}) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-lg border bg-card px-3 py-2 text-xs shadow-md">
-      <p className="mb-1 font-medium text-card-foreground">{label}</p>
-      {payload.map((entry, i) => (
-        <p key={i} className="text-muted-foreground">
-          <span
-            className="mr-1.5 inline-block size-2 rounded-full"
-            style={{ backgroundColor: entry.color }}
-          />
-          {entry.name}: {formatBRL(entry.value)}
-        </p>
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -173,7 +122,7 @@ export function ComercialDashboard({
   evolucao,
   top20Geral: _top20Geral,
   top20VI: _top20VI,
-  pedidosVendedorPrev: _pedidosVendedorPrev,
+  pedidosVendedorPrev,
   defaultMes,
   defaultAno,
   isAcumulado,
@@ -198,15 +147,6 @@ export function ComercialDashboard({
     return Array.from(names).sort();
   }, [pedidosVendedor, clientesStatus]);
 
-  // Filtered data
-  const filteredPedidosVendedor = useMemo(
-    () =>
-      vendedorFilter === "todos"
-        ? pedidosVendedor
-        : pedidosVendedor.filter((p) => p.vendedor === vendedorFilter),
-    [pedidosVendedor, vendedorFilter]
-  );
-
   const filteredClientesStatus = useMemo(
     () =>
       vendedorFilter === "todos"
@@ -221,20 +161,6 @@ export function ComercialDashboard({
         ? clientesInativos
         : clientesInativos.filter((c) => c.vendedor === vendedorFilter),
     [clientesInativos, vendedorFilter]
-  );
-
-  // Chart data for vendedor comparison
-  const barChartData = useMemo(
-    () =>
-      filteredPedidosVendedor.map((p) => ({
-        vendedor:
-          p.vendedor.length > 18
-            ? p.vendedor.slice(0, 18) + "..."
-            : p.vendedor,
-        valorTotal: p.valorTotal,
-        meta: p.meta,
-      })),
-    [filteredPedidosVendedor]
   );
 
   // Evolucao line chart
@@ -373,158 +299,14 @@ export function ComercialDashboard({
       </div>
 
       {/* Indicador 1: Pedidos por Vendedor */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-lg font-semibold">
-                Pedidos por Vendedor
-              </CardTitle>
-              <CardDescription>
-                Realizado vs Meta por vendedor no periodo
-              </CardDescription>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                exportToCsv(
-                  `pedidos-vendedor-${mes}-${ano}`,
-                  filteredPedidosVendedor.map((p) => ({
-                    Vendedor: p.vendedor,
-                    "Valor Total": p.valorTotal,
-                    "Ticket Medio": p.ticketMedio,
-                    "Qtd Pedidos": p.qtdPedidos,
-                    Meta: p.meta,
-                    "% Meta": p.pctMeta,
-                  }))
-                )
-              }
-            >
-              <Download className="mr-1 size-3.5" />
-              CSV
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Bar Chart */}
-          {barChartData.length > 0 && (
-            <ResponsiveContainer width="100%" height={Math.max(300, barChartData.length * 44)}>
-              <BarChart
-                data={barChartData}
-                layout="vertical"
-                margin={{ left: 120, right: 20, top: 5, bottom: 5 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  horizontal={false}
-                  stroke="var(--color-border)"
-                />
-                <XAxis
-                  type="number"
-                  tickFormatter={(v: number) => formatBRL(v)}
-                  tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="vendedor"
-                  width={110}
-                  tick={{ fontSize: 11, fill: "var(--color-foreground)" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip content={<ChartTooltipContent />} />
-                <Bar
-                  dataKey="valorTotal"
-                  fill="var(--color-foreground)"
-                  name="Realizado"
-                  radius={[0, 4, 4, 0]}
-                  barSize={16}
-                />
-                <Bar
-                  dataKey="meta"
-                  fill="var(--color-muted)"
-                  name="Meta"
-                  radius={[0, 4, 4, 0]}
-                  barSize={16}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-
-          {/* Table */}
-          <div className="overflow-x-auto rounded-lg border border-border/50">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    Vendedor
-                  </TableHead>
-                  <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    Valor Total
-                  </TableHead>
-                  <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    Ticket Medio
-                  </TableHead>
-                  <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    Pedidos
-                  </TableHead>
-                  <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    Meta
-                  </TableHead>
-                  <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    % Meta
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredPedidosVendedor.map((p) => (
-                  <TableRow key={p.vendedor} className="hover:bg-muted/50">
-                    <TableCell className="font-medium">{p.vendedor}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatBRL(p.valorTotal)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatBRL(p.ticketMedio)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatNumber(p.qtdPedidos)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatBRL(p.meta)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      <Badge
-                        variant={
-                          p.pctMeta >= 100
-                            ? "default"
-                            : p.pctMeta >= 80
-                              ? "secondary"
-                              : "destructive"
-                        }
-                      >
-                        {formatPct(p.pctMeta)}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filteredPedidosVendedor.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={6}
-                      className="h-16 text-center text-muted-foreground"
-                    >
-                      Nenhum dado disponivel
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      <PedidosVendedorSection
+        pedidosVendedor={pedidosVendedor}
+        pedidosVendedorPrev={pedidosVendedorPrev}
+        vendedorFilter={vendedorFilter}
+        isAcumulado={isAcumulado}
+        mes={mes}
+        ano={ano}
+      />
 
       {/* Indicador 2: Pedidos por Regiao */}
       <Card>
