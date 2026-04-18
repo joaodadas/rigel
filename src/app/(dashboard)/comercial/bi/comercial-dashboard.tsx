@@ -52,6 +52,7 @@ import type {
 import { BiFilters, getMesLabel } from "./components/bi-filters";
 import { TopClientesSection } from "./components/top-clientes-section";
 import { PedidosVendedorSection } from "./components/pedidos-vendedor-section";
+import { PedidosRegiaoSection } from "./components/pedidos-regiao-section";
 import { BaseAtivaSection } from "./components/base-ativa-section";
 import { ClientesInativosSection } from "./components/clientes-inativos-section";
 import {
@@ -242,7 +243,7 @@ export function ComercialDashboard({
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header + Filters */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -291,79 +292,11 @@ export function ComercialDashboard({
       />
 
       {/* Indicador 2: Pedidos por Regiao */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-lg font-semibold">
-                Pedidos por Regiao
-              </CardTitle>
-              <CardDescription>
-                Distribuicao por UF ordenada por valor
-              </CardDescription>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                exportToCsv(
-                  `pedidos-regiao-${mes}-${ano}`,
-                  pedidosRegiao.map((p) => ({
-                    UF: p.uf,
-                    "Valor Total": p.valorTotal,
-                    "Qtd Pedidos": p.qtdPedidos,
-                  }))
-                )
-              }
-            >
-              <Download className="mr-1 size-3.5" />
-              CSV
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto rounded-lg border border-border/50">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    UF
-                  </TableHead>
-                  <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    Valor Total
-                  </TableHead>
-                  <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    Qtd Pedidos
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pedidosRegiao.map((p) => (
-                  <TableRow key={p.uf} className="hover:bg-muted/50">
-                    <TableCell className="font-medium">{p.uf}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatBRL(p.valorTotal)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatNumber(p.qtdPedidos)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {pedidosRegiao.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={3}
-                      className="h-16 text-center text-muted-foreground"
-                    >
-                      Nenhum dado disponivel
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      <PedidosRegiaoSection
+        pedidosRegiao={pedidosRegiao}
+        mes={mes}
+        ano={ano}
+      />
 
       {/* Indicador 3: Base Ativa por Vendedor */}
       <BaseAtivaSection

@@ -77,7 +77,7 @@ function VendedorBarChart({ data }: { data: BarChartItem[] }) {
   return (
     <ResponsiveContainer
       width="100%"
-      height={Math.max(300, data.length * 44)}
+      height={Math.max(200, Math.min(data.length * 44, 600))}
     >
       <BarChart
         data={data}
