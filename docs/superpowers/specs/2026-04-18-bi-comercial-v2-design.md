@@ -73,29 +73,68 @@ Nomes avulsos com poucos pedidos (Danniel Jansen, KATLLYN, LAIS, Fast-martelinho
 
 **Arquivo:** `src/lib/config/vendedores-map.ts`
 
+**Estrategia: INCLUSAO, nao exclusao.** Em vez de manter uma lista negra de canais e-commerce (fragil — novos canais escapam), derivar a lista de vendedores B2B a partir de `METAS_VENDEDORES`. Se um vendedor normalizado nao tem correspondencia nas metas, nao e B2B.
+
 Preencher `VENDEDOR_MAP` com todos os mapeamentos encontrados. Adicionar funcao `normalizeVendedor(nome)` que: trim, trata variantes conhecidas, retorna nome canonico.
 
-Adicionar constante `CANAIS_ECOMMERCE: string[]` com a lista de canais a excluir.
+Adicionar funcao `isB2B(vendedorNormalizado): boolean` que retorna true se o nome normalizado tem correspondencia em METAS_VENDEDORES (por lista de inclusao).
 
-Adicionar funcao `isB2B(vendedorNormalizado): boolean` que retorna true se nao esta em CANAIS_ECOMMERCE.
+Exportar `B2B_VENDEDORES_NORMALIZED: string[]` — lista derivada de METAS_VENDEDORES com nomes normalizados em UPPER. Usada pelas RPCs como parametro.
 
-Para "VENDAS INTERNAS" como grupo, adicionar entrada no `METAS_VENDEDORES` com meta combinada, ou calcular dinamicamente somando Aline + Fatima.
+Para "VENDAS INTERNAS" como grupo: calcular meta combinada dinamicamente somando Aline + Fatima do METAS_VENDEDORES (nao duplicar dados).
 
-### 3.2 Queries — Filtro B2B
+### 3.2 Normalizacao: duas camadas
+
+**Camada SQL (RPCs):** Normalizar com `UPPER(TRIM(vendedor_pedido))` e `UPPER(TRIM(vendedor_cliente))` nas clausulas WHERE e GROUP BY. Receber `p_b2b_vendedores text[]` como parametro para filtrar apenas vendedores B2B. A lista e passada pelo app como UPPER dos nomes normalizados.
+
+**Camada JS (app-side):** `normalizeVendedor()` para display bonito (transformar "CLAUDIO" → "Claudio", "VENDAS INTERNAS" → "Vendas Internas"). Aplicada pos-fetch apenas para exibicao e mapeamento de metas.
+
+Isso garante que RPCs e queries app-side usam a mesma logica de filtragem sem duplicacao de normalizacao.
+
+### 3.3 RPCs — Reescrita
+
+As 3 RPCs precisam ser reescritas para aceitar lista de vendedores B2B:
+
+**rpc_comercial_kpis(p_start_date, p_end_date, p_b2b_vendedores text[]):**
+- faturamento: SUM de pedidos onde UPPER(TRIM(vendedor_pedido)) = ANY(p_b2b_vendedores)
+- total_pedidos: COUNT idem
+- clientes_ativos: COUNT DISTINCT id_cliente de pedidos B2B nos ultimos 6 meses
+- base_total: COUNT de clientes onde UPPER(TRIM(vendedor_cliente)) = ANY(p_b2b_vendedores)
+
+**rpc_clientes_status_vendedor(p_b2b_vendedores text[]):**
+- Filtrar clientes WHERE UPPER(TRIM(vendedor_cliente)) = ANY(p_b2b_vendedores)
+- GROUP BY UPPER(TRIM(vendedor_cliente))
+
+**rpc_clientes_inativos(p_vendedor, p_b2b_vendedores text[], p_limit):**
+- Filtrar clientes WHERE UPPER(TRIM(vendedor_cliente)) = ANY(p_b2b_vendedores)
+- Filtro adicional por vendedor especifico se p_vendedor nao nulo
+
+### 3.4 Queries app-side — Filtro B2B
 
 **Arquivo:** `src/lib/queries/comercial-analytics.ts`
 
-Todas as queries de pedidos adicionam filtro: `vendedor_pedido NOT IN (canais_ecommerce)` no nivel Supabase (clausula `.not('vendedor_pedido', 'in', ...)`).
+Queries que usam `supabaseFetchAll` (pedidosPorVendedor, pedidosPorRegiao, produtosEvolucao): adicionar helper `b2bFilter(query)` que aplica `.in('vendedor_pedido', B2B_VENDEDORES_VARIATIONS)` onde VARIATIONS inclui todas as formas conhecidas (UPPER, lower, com espaco). Alternativa mais robusta: usar `.or()` com `vendedor_pedido.ilike.NOME` para cada vendedor B2B.
 
-A normalizacao de nomes e aplicada APOS o fetch, no JS, antes de agrupar.
+Normalizacao de nomes para display aplicada pos-fetch com `normalizeVendedor()`.
 
-### 3.3 RPCs — Ajustes
+### 3.5 Delta vs Mes Anterior
 
-**rpc_comercial_kpis:** Adicionar parametro `p_excluded_vendedores text[]` para filtrar pedidos de e-commerce. Ou: mover logica para app-side (mais flexivel, evita migracoes SQL frequentes).
+Para mostrar "Delta vs Mes Anterior" no Indicador 1:
+- No server component, fazer 2 fetches em paralelo: periodo atual + periodo anterior (mes-1)
+- Passar ambos como props ao sub-componente
+- Sub-componente cruza por vendedor normalizado e calcula delta
+- Quando "Acumulado" selecionado, delta nao se aplica (esconder coluna)
 
-**Decisao:** Manter RPCs para queries pesadas (clientes_inativos, clientes_status_vendedor) pois envolvem JOINs grandes. Para KPIs e pedidos por vendedor, usar queries Supabase + JS (ja e o padrao atual).
+### 3.6 Cache Keys
 
-### 3.4 Dashboard — Decomposicao
+Adicionar ao `CACHE_KEYS`:
+```
+biTop20: (mi, mf, a) => `bi:top20:${mi}:${mf}:${a}`
+biTop20VI: (mi, mf, a) => `bi:top20vi:${mi}:${mf}:${a}`
+biVendedorPrev: (mi, mf, a) => `bi:vendedor-prev:${mi}:${mf}:${a}`
+```
+
+### 3.7 Dashboard — Decomposicao
 
 O arquivo `comercial-dashboard.tsx` (950 linhas) sera decomposto em sub-componentes:
 
@@ -114,7 +153,9 @@ src/app/(dashboard)/comercial/bi/
     top-clientes-section.tsx       — top 20 clientes
 ```
 
-Cada sub-componente recebe dados via props e e auto-contido.
+Cada sub-componente recebe dados via props. Estado de filtros (mes, ano, vendedor) gerenciado via URL params no container (padrao atual mantido).
+
+**Volume de dados apos filtro B2B e pequeno** (~1.100 clientes B2B, ~1.700 pedidos B2B por quadrimestre), entao fetch-all + props e adequado. Nao precisa de lazy loading.
 
 ---
 
@@ -122,26 +163,31 @@ Cada sub-componente recebe dados via props e e auto-contido.
 
 ### Bloco 1: Normalizacao de Nomes + Filtro B2B
 
-- Preencher `VENDEDOR_MAP` com mapeamentos reais
-- Criar `CANAIS_ECOMMERCE`, `normalizeVendedor()`, `isB2B()`
-- Aplicar filtro em todas as queries de `comercial-analytics.ts`
-- Adicionar entrada "Vendas Internas" combinada em metas (ou calcular dinamicamente)
+- Preencher `VENDEDOR_MAP` com mapeamentos reais encontrados nos dados
+- Criar `normalizeVendedor()`, `isB2B()` (por inclusao via METAS_VENDEDORES)
+- Exportar `B2B_VENDEDORES_NORMALIZED` para uso nas RPCs
+- Aplicar filtro B2B em todas as queries de `comercial-analytics.ts`
+- Meta "Vendas Internas" = soma dinamica de Aline + Fatima
 
 **Testes:**
-- Unit: `normalizeVendedor()` mapeia todas as variantes corretamente
-- Unit: `isB2B()` classifica canais corretamente
-- Unit: meta combinada de Vendas Internas = 3.646.425
+- Unit: `normalizeVendedor()` mapeia todas as variantes encontradas (VENDAS INTERNAS, vendas internas, vendas internas(espaco), vendas internos, vendas onternas → "Vendas Internas")
+- Unit: `normalizeVendedor()` mapeia ANA PAULA RAMOS(espaco) → "Ana Paula Ramos"
+- Unit: `isB2B("Vendas Internas")` → true, `isB2B("MERCADOFULL")` → false
+- Unit: B2B_VENDEDORES_NORMALIZED contem UPPER de todos os nomes das metas
 
-### Bloco 2: Corrigir KPIs
+### Bloco 2: Reescrever RPCs + Corrigir KPIs
 
+- Reescrever `rpc_comercial_kpis` para aceitar `p_b2b_vendedores text[]` — filtrar pedidos e clientes por lista de inclusao
+- Reescrever `rpc_clientes_status_vendedor` para aceitar `p_b2b_vendedores text[]` — agrupar por UPPER(TRIM(vendedor_cliente)) filtrado
+- Reescrever `rpc_clientes_inativos` para aceitar `p_b2b_vendedores text[]` — filtrar apenas clientes B2B
+- Atualizar chamadas em `comercial-analytics.ts` para passar B2B_VENDEDORES_NORMALIZED
 - Faturamento B2B: soma apenas pedidos com vendedor B2B
-- Ticket medio: faturamento B2B / pedidos B2B
-- Clientes ativos: COUNT DISTINCT id_cliente de pedidos B2B nos ultimos 6 meses
-- Clientes inativos: base B2B - ativos B2B
-- Base total: clientes com vendedor_cliente normalizado que seja B2B (mesma normalizacao aplicada ao campo vendedor_cliente da tabela clientes)
+- Ticket medio: faturamento B2B / pedidos B2B (esperado ~R$1.900, nao R$167)
+- Base total B2B: ~1.100 clientes (nao 188K)
 
 **Testes:**
-- Integration: KPIs retornam valores coerentes (faturamento > 0, ticket medio > 500, base total > 0)
+- Integration: KPIs retornam valores coerentes (faturamento > 0, ticket medio > 500, base total entre 500 e 5000)
+- Integration: base_total nao retorna 188K (valida que filtro B2B funciona)
 - Unit: calculo de pctAtingimento
 
 ### Bloco 3: Filtros Globais
@@ -158,12 +204,14 @@ Cada sub-componente recebe dados via props e e auto-contido.
 ### Bloco 4: Indicador 1 — Pedidos por Vendedor (evoluir)
 
 - Separar secoes: Vendas Internas / Top 10 Representantes / Outros (accordion colapsavel)
-- Tabela: adicionar coluna "Delta vs Mes Anterior"
-- Meta mensal (nao acumulada) quando mes especifico selecionado
+- Tabela: adicionar coluna "Delta vs Mes Anterior" (dados do mes anterior buscados em paralelo no server component, conforme secao 3.5)
+- Quando "Acumulado" selecionado, esconder coluna delta (nao faz sentido)
+- Meta mensal (nao acumulada) quando mes especifico selecionado; meta acumulada quando "Acumulado"
 - Manter grafico de barras e exportacao CSV
 
 **Testes:**
-- Unit: calculo de delta vs mes anterior
+- Unit: calculo de delta vs mes anterior (positivo e negativo)
+- Unit: delta nao calculado quando modo "Acumulado"
 - Component: accordion "Outros" inicia colapsado, expande ao clicar
 
 ### Bloco 5: Indicador 4 — Lista de Inativos (prioridade Raquel)
@@ -305,5 +353,6 @@ jsdom
 ## 7. Riscos
 
 1. **Sync de pedido_itens**: o endpoint VHSys `/pedidos/{id}/itens` pode nao suportar bulk fetch. Pode ser necessario iterar pedido por pedido (lento para 265K pedidos). Mitigacao: sync incremental apenas de pedidos recentes.
-2. **Performance com 188K clientes**: queries de inativos e base ativa podem ser lentas sem indices adequados. Mitigacao: manter RPCs para essas queries, adicionar indices se necessario.
-3. **Nomes nao mapeados**: novos vendedores podem aparecer com nomes fora do mapa. Mitigacao: tratar como "Outros" e logar warnings.
+2. **Performance das RPCs reescritas**: usar `= ANY(p_b2b_vendedores)` com UPPER(TRIM()) impede uso de indices simples. Mitigacao: criar indice funcional `CREATE INDEX idx_pedidos_vendedor_norm ON pedidos (UPPER(TRIM(vendedor_pedido)))` e equivalente para clientes. Com ~1.100 clientes B2B e ~1.700 pedidos por periodo, a performance deve ser aceitavel mesmo sem indice.
+3. **Nomes nao mapeados**: novos vendedores B2B podem aparecer com nomes fora do mapa. Mitigacao: `isB2B()` retorna false, vendedor nao aparece no BI. Detectar via log: no fetcher, logar vendedores unicos que nao sao B2B para identificar mapeamentos faltantes.
+4. **Variantes novas de nomes existentes**: alguem pode digitar "vendas intenas" (nova variante de typo). Mitigacao: VENDEDOR_MAP cobre as variantes conhecidas. Novas variantes precisam ser adicionadas manualmente ao perceber discrepancia nos dados.
