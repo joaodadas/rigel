@@ -50,6 +50,7 @@ import type {
   TopCliente,
 } from "@/lib/queries/comercial-analytics";
 import { BiFilters, getMesLabel } from "./components/bi-filters";
+import { TopClientesSection } from "./components/top-clientes-section";
 import { PedidosVendedorSection } from "./components/pedidos-vendedor-section";
 import { BaseAtivaSection } from "./components/base-ativa-section";
 import { ClientesInativosSection } from "./components/clientes-inativos-section";
@@ -121,8 +122,8 @@ export function ComercialDashboard({
   clientesStatus,
   clientesInativos,
   evolucao,
-  top20Geral: _top20Geral,
-  top20VI: _top20VI,
+  top20Geral,
+  top20VI,
   pedidosVendedorPrev,
   defaultMes,
   defaultAno,
@@ -270,6 +271,14 @@ export function ComercialDashboard({
           <KpiCard key={card.title} index={index} {...card} />
         ))}
       </div>
+
+      {/* Top 20 Clientes */}
+      <TopClientesSection
+        top20Geral={top20Geral}
+        top20VI={top20VI}
+        mes={mes}
+        ano={ano}
+      />
 
       {/* Indicador 1: Pedidos por Vendedor */}
       <PedidosVendedorSection
