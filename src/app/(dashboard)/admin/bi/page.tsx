@@ -7,6 +7,7 @@ import {
   getClientesAtivosVendedor,
   getClientesInativos,
   getProdutosEvolucao,
+  getTop20Clientes,
 } from "@/lib/queries/comercial-analytics";
 import { ComercialDashboard } from "../../comercial/bi/comercial-dashboard";
 
@@ -21,7 +22,7 @@ export default async function AdminBIPage() {
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
 
-  const [kpis, pedidosVendedor, pedidosRegiao, clientesStatus, clientesInativos, evolucao] =
+  const [kpis, pedidosVendedor, pedidosRegiao, clientesStatus, clientesInativos, evolucao, top20Geral, top20VI] =
     await Promise.all([
       getComercialKPIs(1, currentMonth, currentYear),
       getPedidosPorVendedor(1, currentMonth, currentYear),
@@ -29,6 +30,8 @@ export default async function AdminBIPage() {
       getClientesAtivosVendedor(),
       getClientesInativos(),
       getProdutosEvolucao(6),
+      getTop20Clientes(1, currentMonth, currentYear, false),
+      getTop20Clientes(1, currentMonth, currentYear, true),
     ]);
 
   return (
@@ -39,8 +42,12 @@ export default async function AdminBIPage() {
       clientesStatus={clientesStatus}
       clientesInativos={clientesInativos}
       evolucao={evolucao}
+      top20Geral={top20Geral}
+      top20VI={top20VI}
+      pedidosVendedorPrev={null}
       defaultMes={currentMonth}
       defaultAno={currentYear}
+      isAcumulado={true}
     />
   );
 }

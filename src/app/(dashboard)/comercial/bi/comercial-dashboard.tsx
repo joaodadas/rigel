@@ -31,13 +31,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+// Select components now used via BiFilters
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -56,7 +50,9 @@ import type {
   ClienteVendedorStatus,
   ClienteInativo,
   ProdutoEvolucao,
+  TopCliente,
 } from "@/lib/queries/comercial-analytics";
+import { BiFilters, getMesLabel } from "./components/bi-filters";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -69,8 +65,12 @@ interface ComercialDashboardProps {
   clientesStatus: ClienteVendedorStatus[];
   clientesInativos: ClienteInativo[];
   evolucao: ProdutoEvolucao[];
+  top20Geral: TopCliente[];
+  top20VI: TopCliente[];
+  pedidosVendedorPrev: PedidoVendedor[] | null;
   defaultMes: number;
   defaultAno: number;
+  isAcumulado: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -171,8 +171,12 @@ export function ComercialDashboard({
   clientesStatus,
   clientesInativos,
   evolucao,
+  top20Geral: _top20Geral,
+  top20VI: _top20VI,
+  pedidosVendedorPrev: _pedidosVendedorPrev,
   defaultMes,
   defaultAno,
+  isAcumulado,
 }: ComercialDashboardProps) {
   const router = useRouter();
   const mes = defaultMes;
@@ -180,10 +184,10 @@ export function ComercialDashboard({
   const [vendedorFilter, setVendedorFilter] = useState("todos");
 
   const navigateToMonth = useCallback(
-    (newMes: number, newAno: number) => {
-      router.push(`?mes=${newMes}&ano=${newAno}`);
+    (newMes: number, newAno?: number) => {
+      router.push(`?mes=${newMes}&ano=${newAno ?? ano}`);
     },
-    [router]
+    [router, ano]
   );
 
   // Distinct vendedores for filter
@@ -288,7 +292,9 @@ export function ComercialDashboard({
     {
       title: "Meta B2B Acumulada",
       value: formatBRL(kpis.metaB2BAcumulada),
-      description: `Meta ate ${MESES[mes - 1]?.label ?? mes}/${ano}`,
+      description: isAcumulado
+        ? `Meta acumulada ${ano}`
+        : `Meta ate ${MESES[mes - 1]?.label ?? mes}/${ano}`,
       icon: Target,
       trend: "neutral" as const,
     },
@@ -344,60 +350,19 @@ export function ComercialDashboard({
             BI Comercial
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Indicadores comerciais acumulados ate {MESES[mes - 1]?.label ?? mes}/{ano}
+            Indicadores comerciais {isAcumulado ? "acumulados ate hoje" : `de ${getMesLabel(mes)}`}/{ano}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={String(mes)}
-            onValueChange={(v) => navigateToMonth(Number(v), ano)}
-          >
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Mes" />
-            </SelectTrigger>
-            <SelectContent align="end" alignItemWithTrigger={false}>
-              {MESES.map((m) => (
-                <SelectItem key={m.value} value={String(m.value)}>
-                  {m.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={String(ano)}
-            onValueChange={(v) => navigateToMonth(mes, Number(v))}
-          >
-            <SelectTrigger className="w-[100px]">
-              <SelectValue placeholder="Ano" />
-            </SelectTrigger>
-            <SelectContent align="end" alignItemWithTrigger={false}>
-              {[ano - 1, ano].map((y) => (
-                <SelectItem key={y} value={String(y)}>
-                  {y}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={vendedorFilter}
-            onValueChange={(v) => setVendedorFilter(v ?? "todos")}
-          >
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Vendedor" />
-            </SelectTrigger>
-            <SelectContent align="end" alignItemWithTrigger={false}>
-              <SelectItem value="todos">Todos os vendedores</SelectItem>
-              {vendedores.map((v) => (
-                <SelectItem key={v} value={v}>
-                  {v}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <BiFilters
+          mes={mes}
+          ano={ano}
+          vendedorFilter={vendedorFilter}
+          vendedores={vendedores}
+          onMesChange={(newMes) => navigateToMonth(newMes)}
+          onAnoChange={(newAno) => navigateToMonth(mes, newAno)}
+          onVendedorChange={(v) => setVendedorFilter(v)}
+        />
       </div>
 
       {/* KPI Cards */}
