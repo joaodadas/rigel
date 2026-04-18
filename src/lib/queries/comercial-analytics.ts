@@ -5,7 +5,12 @@ import {
   METAS_VENDEDORES,
   getMetaMensal,
 } from "@/lib/config/metas-2026";
-import { mapVendedorToMeta } from "@/lib/config/vendedores-map";
+import {
+  normalizeVendedor,
+  isB2B,
+  B2B_VENDEDORES_NORMALIZED,
+  findMetaAnualByDisplay,
+} from "@/lib/config/vendedores-map";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,6 +56,8 @@ export interface ClienteInativo {
   ultimoPedido: string | null;
   valorUltimoPedido: number;
   diasSemCompra: number;
+  cidade: string;
+  uf: string;
 }
 
 export interface ProdutoEvolucao {
@@ -63,6 +70,18 @@ export interface ProdutoEvolucao {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const B2B_RAW_VARIATIONS: string[] = (() => {
+  const variations = new Set<string>();
+  for (const name of B2B_VENDEDORES_NORMALIZED) {
+    variations.add(name);
+    variations.add(name.toLowerCase());
+    variations.add(name.toLowerCase() + " ");
+  }
+  variations.add("vendas internos ");
+  variations.add("vendas onternas");
+  return Array.from(variations);
+})();
 
 function toDateStr(d: Date): string {
   return d.toISOString().split("T")[0];
@@ -88,17 +107,6 @@ function sumMetaAllVendedores(mesInicio: number, mesFim: number): number {
     }
   }
   return total;
-}
-
-/** Find the meta_2026 for a vendedor name (after mapping). */
-function findMetaAnual(nomeVendedor: string): number {
-  const mapped = mapVendedorToMeta(nomeVendedor);
-  if (!mapped) return 0;
-  const lower = mapped.toLowerCase();
-  const found = METAS_VENDEDORES.find(
-    (v) => v.nome.toLowerCase() === lower
-  );
-  return found?.meta_2026 ?? 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +135,7 @@ async function _fetchComercialKPIs(
   const { data, error } = await supabase.rpc("rpc_comercial_kpis", {
     p_start_date: start,
     p_end_date: end,
+    p_b2b_vendedores: B2B_VENDEDORES_NORMALIZED,
   });
 
   if (error) throw new Error(`rpc_comercial_kpis failed: ${error.message}`);
@@ -190,13 +199,15 @@ async function _fetchPedidosPorVendedor(
         .eq("lixeira", "Nao")
         .gte("data_pedido", start)
         .lte("data_pedido", end)
+        .in("vendedor_pedido", B2B_RAW_VARIATIONS)
         .range(from, to)
   );
 
-  // Group by vendedor in JS
+  // Group by normalized vendedor name
   const groups: Record<string, { total: number; count: number }> = {};
   for (const row of rows) {
-    const vendedor = (row.vendedor_pedido as string) ?? "Sem vendedor";
+    const vendedor = normalizeVendedor(row.vendedor_pedido);
+    if (!isB2B(vendedor)) continue;
     if (!groups[vendedor]) groups[vendedor] = { total: 0, count: 0 };
     groups[vendedor].total += Number(row.valor_total_nota) || 0;
     groups[vendedor].count += 1;
@@ -204,7 +215,7 @@ async function _fetchPedidosPorVendedor(
 
   const result: PedidoVendedor[] = Object.entries(groups).map(
     ([vendedor, agg]) => {
-      const metaAnual = findMetaAnual(vendedor);
+      const metaAnual = findMetaAnualByDisplay(vendedor);
       let meta = 0;
       for (let m = mesInicio; m <= mesFim; m++) {
         meta += getMetaMensal(metaAnual, m);
@@ -257,6 +268,7 @@ async function _fetchPedidosPorRegiao(
           .eq("lixeira", "Nao")
           .gte("data_pedido", start)
           .lte("data_pedido", end)
+          .in("vendedor_pedido", B2B_RAW_VARIATIONS)
           .range(from, to)
     ),
 
@@ -314,7 +326,9 @@ async function _fetchClientesAtivosVendedor(): Promise<
 > {
   const supabase = createSupabaseServer();
 
-  const { data, error } = await supabase.rpc("rpc_clientes_status_vendedor");
+  const { data, error } = await supabase.rpc("rpc_clientes_status_vendedor", {
+    p_b2b_vendedores: B2B_VENDEDORES_NORMALIZED,
+  });
 
   if (error)
     throw new Error(`rpc_clientes_status_vendedor failed: ${error.message}`);
@@ -328,7 +342,7 @@ async function _fetchClientesAtivosVendedor(): Promise<
       inativos: number | string;
       pct_ativacao: number | string;
     }) => ({
-      vendedor: String(r.vendedor),
+      vendedor: normalizeVendedor(r.vendedor),
       total: Number(r.total) || 0,
       ativos: Number(r.ativos) || 0,
       inativos: Number(r.inativos) || 0,
@@ -359,7 +373,9 @@ async function _fetchClientesInativos(
   const supabase = createSupabaseServer();
 
   const { data, error } = await supabase.rpc("rpc_clientes_inativos", {
-    p_vendedor: vendedorFilter || null,
+    p_vendedor: vendedorFilter ? vendedorFilter.toUpperCase().trim() : null,
+    p_b2b_vendedores: B2B_VENDEDORES_NORMALIZED,
+    p_limit: 5000,
   });
 
   if (error)
@@ -373,12 +389,16 @@ async function _fetchClientesInativos(
       ultimo_pedido: string | null;
       valor_ultimo_pedido: number | string;
       dias_sem_compra: number | string;
+      cidade?: string;
+      uf?: string;
     }) => ({
       nome: String(r.nome),
-      vendedor: String(r.vendedor),
+      vendedor: normalizeVendedor(r.vendedor),
       ultimoPedido: r.ultimo_pedido ? String(r.ultimo_pedido) : null,
       valorUltimoPedido: Number(r.valor_ultimo_pedido) || 0,
       diasSemCompra: Number(r.dias_sem_compra) || 0,
+      cidade: r.cidade ?? "",
+      uf: r.uf ?? "",
     })
   );
 }
@@ -423,6 +443,7 @@ async function _fetchProdutosEvolucao(
         .eq("lixeira", "Nao")
         .gte("data_pedido", startDate)
         .lte("data_pedido", endDate)
+        .in("vendedor_pedido", B2B_RAW_VARIATIONS)
         .range(from, to)
   );
 
@@ -446,4 +467,133 @@ async function _fetchProdutosEvolucao(
       quantidade: agg.quantidade,
     }))
     .sort((a, b) => a.mes.localeCompare(b.mes));
+}
+
+// ---------------------------------------------------------------------------
+// 7. getTop20Clientes  (JS logic, Redis cache)
+// ---------------------------------------------------------------------------
+
+export interface TopCliente {
+  posicao: number;
+  nome: string;
+  vendedor: string;
+  valorTotal: number;
+  qtdPedidos: number;
+  ticketMedio: number;
+  uf: string;
+}
+
+export async function getTop20Clientes(
+  mesInicio: number,
+  mesFim: number,
+  ano: number,
+  apenasVendasInternas: boolean = false
+): Promise<TopCliente[]> {
+  const key = apenasVendasInternas
+    ? CACHE_KEYS.biTop20VI(mesInicio, mesFim, ano)
+    : CACHE_KEYS.biTop20(mesInicio, mesFim, ano);
+  return cacheGetOrFetchSWR(key, () =>
+    _fetchTop20Clientes(mesInicio, mesFim, ano, apenasVendasInternas)
+  );
+}
+
+async function _fetchTop20Clientes(
+  mesInicio: number,
+  mesFim: number,
+  ano: number,
+  apenasVendasInternas: boolean
+): Promise<TopCliente[]> {
+  const supabase = createSupabaseServer();
+  const { start, end } = buildDateRange(mesInicio, mesFim, ano);
+
+  // Determine which vendedor variations to include
+  const vendasInternasVariations = [
+    "vendas internas",
+    "vendas internas ",
+    "VENDAS INTERNAS",
+    "vendas internos ",
+    "vendas onternas",
+    "Vendas Internas",
+  ];
+  const vendedorFilter = apenasVendasInternas
+    ? vendasInternasVariations
+    : B2B_RAW_VARIATIONS;
+
+  // Fetch pedidos and clientes in parallel
+  const [pedidos, clientes] = await Promise.all([
+    supabaseFetchAll<{
+      id_cliente: string;
+      valor_total_nota: string;
+      vendedor_pedido: string;
+    }>(
+      (from, to) =>
+        supabase
+          .from("pedidos")
+          .select("id_cliente, valor_total_nota, vendedor_pedido")
+          .eq("status_pedido", "Atendido")
+          .eq("lixeira", "Nao")
+          .gte("data_pedido", start)
+          .lte("data_pedido", end)
+          .in("vendedor_pedido", vendedorFilter)
+          .range(from, to)
+    ),
+
+    supabaseFetchAll<{
+      id_cliente: string;
+      nome_cliente: string;
+      uf_cliente: string;
+      vendedor: string;
+    }>(
+      (from, to) =>
+        supabase
+          .from("clientes")
+          .select("id_cliente, nome_cliente, uf_cliente, vendedor")
+          .eq("lixeira", "Nao")
+          .range(from, to)
+    ),
+  ]);
+
+  // Build client lookup map
+  const clienteMap: Record<
+    string,
+    { nome: string; uf: string; vendedor: string }
+  > = {};
+  for (const c of clientes) {
+    if (c.id_cliente) {
+      clienteMap[String(c.id_cliente)] = {
+        nome: String(c.nome_cliente ?? ""),
+        uf: String(c.uf_cliente ?? ""),
+        vendedor: normalizeVendedor(c.vendedor),
+      };
+    }
+  }
+
+  // Group pedidos by id_cliente
+  const groups: Record<string, { total: number; count: number }> = {};
+  for (const p of pedidos) {
+    const id = String(p.id_cliente);
+    if (!groups[id]) groups[id] = { total: 0, count: 0 };
+    groups[id].total += Number(p.valor_total_nota) || 0;
+    groups[id].count += 1;
+  }
+
+  // Join, sort, take top 20
+  const ranked = Object.entries(groups)
+    .map(([id, agg]) => {
+      const info = clienteMap[id] ?? { nome: id, uf: "", vendedor: "" };
+      return {
+        posicao: 0,
+        nome: info.nome,
+        vendedor: info.vendedor,
+        valorTotal: agg.total,
+        qtdPedidos: agg.count,
+        ticketMedio: agg.count > 0 ? agg.total / agg.count : 0,
+        uf: info.uf,
+      };
+    })
+    .sort((a, b) => b.valorTotal - a.valorTotal)
+    .slice(0, 20);
+
+  // Assign 1-indexed position
+  return ranked.map((item, idx) => ({ ...item, posicao: idx + 1 }));
 }
