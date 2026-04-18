@@ -30,7 +30,6 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 // Select components now used via BiFilters
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -52,6 +51,7 @@ import type {
 } from "@/lib/queries/comercial-analytics";
 import { BiFilters, getMesLabel } from "./components/bi-filters";
 import { PedidosVendedorSection } from "./components/pedidos-vendedor-section";
+import { BaseAtivaSection } from "./components/base-ativa-section";
 import { ClientesInativosSection } from "./components/clientes-inativos-section";
 import {
   formatBRL,
@@ -148,14 +148,6 @@ export function ComercialDashboard({
     return Array.from(names).sort();
   }, [pedidosVendedor, clientesStatus]);
 
-  const filteredClientesStatus = useMemo(
-    () =>
-      vendedorFilter === "todos"
-        ? clientesStatus
-        : clientesStatus.filter((c) => c.vendedor === vendedorFilter),
-    [clientesStatus, vendedorFilter]
-  );
-
   // Evolucao line chart
   const evolucaoChart = useMemo(
     () =>
@@ -186,18 +178,6 @@ export function ComercialDashboard({
       };
     });
   }, [evolucao]);
-
-  // Totals for clientes
-  const clientesTotals = useMemo(() => {
-    return filteredClientesStatus.reduce(
-      (acc, c) => ({
-        total: acc.total + c.total,
-        ativos: acc.ativos + c.ativos,
-        inativos: acc.inativos + c.inativos,
-      }),
-      { total: 0, ativos: 0, inativos: 0 }
-    );
-  }, [filteredClientesStatus]);
 
   // KPI cards data
   const kpiCards = [
@@ -376,124 +356,11 @@ export function ComercialDashboard({
         </CardContent>
       </Card>
 
-      {/* Indicador 3+4: Clientes Ativos/Inativos */}
-      <Card>
-        <CardHeader>
-          <div>
-            <CardTitle className="text-lg font-semibold">
-              Clientes Ativos e Inativos
-            </CardTitle>
-            <CardDescription>
-              Status de ativacao por vendedor (ultimos 6 meses)
-            </CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Summary cards */}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-lg border border-border/50 p-4">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Total
-              </p>
-              <p className="mt-1 text-2xl font-bold tabular-nums">
-                {formatNumber(clientesTotals.total)}
-              </p>
-            </div>
-            <div className="rounded-lg border border-border/50 p-4">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Ativos
-              </p>
-              <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-                {formatNumber(clientesTotals.ativos)}
-              </p>
-            </div>
-            <div className="rounded-lg border border-border/50 p-4">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Inativos
-              </p>
-              <p className="mt-1 text-2xl font-bold tabular-nums text-red-600 dark:text-red-400">
-                {formatNumber(clientesTotals.inativos)}
-              </p>
-            </div>
-            <div className="rounded-lg border border-border/50 p-4">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                % Ativacao
-              </p>
-              <p className="mt-1 text-2xl font-bold tabular-nums">
-                {formatPct(
-                  clientesTotals.total > 0
-                    ? (clientesTotals.ativos / clientesTotals.total) * 100
-                    : 0
-                )}
-              </p>
-            </div>
-          </div>
-
-          {/* Table: status per vendedor */}
-          <div className="overflow-x-auto rounded-lg border border-border/50">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    Vendedor
-                  </TableHead>
-                  <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    Total
-                  </TableHead>
-                  <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    Ativos
-                  </TableHead>
-                  <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    Inativos
-                  </TableHead>
-                  <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    % Ativacao
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredClientesStatus.map((c) => (
-                  <TableRow key={c.vendedor} className="hover:bg-muted/50">
-                    <TableCell className="font-medium">{c.vendedor}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatNumber(c.total)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">
-                      {formatNumber(c.ativos)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-red-600 dark:text-red-400">
-                      {formatNumber(c.inativos)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      <Badge
-                        variant={
-                          c.pctAtivacao >= 50
-                            ? "default"
-                            : c.pctAtivacao >= 25
-                              ? "secondary"
-                              : "destructive"
-                        }
-                      >
-                        {formatPct(c.pctAtivacao)}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filteredClientesStatus.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="h-16 text-center text-muted-foreground"
-                    >
-                      Nenhum dado disponivel
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Indicador 3: Base Ativa por Vendedor */}
+      <BaseAtivaSection
+        clientesStatus={clientesStatus}
+        vendedorFilter={vendedorFilter}
+      />
 
       {/* Indicador 4: Lista de Inativos */}
       <ClientesInativosSection
