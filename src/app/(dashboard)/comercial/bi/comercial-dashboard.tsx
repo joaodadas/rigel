@@ -52,6 +52,7 @@ import type {
 } from "@/lib/queries/comercial-analytics";
 import { BiFilters, getMesLabel } from "./components/bi-filters";
 import { PedidosVendedorSection } from "./components/pedidos-vendedor-section";
+import { ClientesInativosSection } from "./components/clientes-inativos-section";
 import {
   formatBRL,
   formatBRLFull,
@@ -153,14 +154,6 @@ export function ComercialDashboard({
         ? clientesStatus
         : clientesStatus.filter((c) => c.vendedor === vendedorFilter),
     [clientesStatus, vendedorFilter]
-  );
-
-  const filteredClientesInativos = useMemo(
-    () =>
-      vendedorFilter === "todos"
-        ? clientesInativos
-        : clientesInativos.filter((c) => c.vendedor === vendedorFilter),
-    [clientesInativos, vendedorFilter]
   );
 
   // Evolucao line chart
@@ -386,34 +379,13 @@ export function ComercialDashboard({
       {/* Indicador 3+4: Clientes Ativos/Inativos */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-lg font-semibold">
-                Clientes Ativos e Inativos
-              </CardTitle>
-              <CardDescription>
-                Status de ativacao por vendedor (ultimos 6 meses)
-              </CardDescription>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                exportToCsv(
-                  `clientes-inativos-${mes}-${ano}`,
-                  filteredClientesInativos.map((c) => ({
-                    Cliente: c.nome,
-                    Vendedor: c.vendedor,
-                    "Ultimo Pedido": c.ultimoPedido ?? "Nunca",
-                    "Valor Ultimo Pedido": c.valorUltimoPedido,
-                    "Dias sem Compra": c.diasSemCompra,
-                  }))
-                )
-              }
-            >
-              <Download className="mr-1 size-3.5" />
-              CSV
-            </Button>
+          <div>
+            <CardTitle className="text-lg font-semibold">
+              Clientes Ativos e Inativos
+            </CardTitle>
+            <CardDescription>
+              Status de ativacao por vendedor (ultimos 6 meses)
+            </CardDescription>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -520,71 +492,14 @@ export function ComercialDashboard({
               </TableBody>
             </Table>
           </div>
-
-          {/* Table: inactive clients */}
-          {filteredClientesInativos.length > 0 && (
-            <div>
-              <p className="mb-3 text-sm font-medium text-muted-foreground">
-                Clientes inativos ({formatNumber(filteredClientesInativos.length)})
-              </p>
-              <div className="overflow-x-auto rounded-lg border border-border/50">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                        Cliente
-                      </TableHead>
-                      <TableHead className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                        Vendedor
-                      </TableHead>
-                      <TableHead className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                        Ultimo Pedido
-                      </TableHead>
-                      <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                        Valor
-                      </TableHead>
-                      <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                        Dias sem Compra
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredClientesInativos.slice(0, 50).map((c, i) => (
-                      <TableRow key={`${c.nome}-${i}`} className="hover:bg-muted/50">
-                        <TableCell className="max-w-[200px] truncate font-medium">
-                          {c.nome}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {c.vendedor}
-                        </TableCell>
-                        <TableCell className="tabular-nums text-muted-foreground">
-                          {c.ultimoPedido ?? "Nunca"}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {formatBRL(c.valorUltimoPedido)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {c.diasSemCompra >= 9999 ? (
-                            <Badge variant="destructive">Nunca comprou</Badge>
-                          ) : (
-                            <span>{formatNumber(c.diasSemCompra)}d</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              {filteredClientesInativos.length > 50 && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Mostrando 50 de {formatNumber(filteredClientesInativos.length)}.
-                  Exporte o CSV para ver todos.
-                </p>
-              )}
-            </div>
-          )}
         </CardContent>
       </Card>
+
+      {/* Indicador 4: Lista de Inativos */}
+      <ClientesInativosSection
+        clientesInativos={clientesInativos}
+        vendedorFilter={vendedorFilter}
+      />
 
       {/* Indicador 5: Evolucao Faturamento */}
       <Card>
