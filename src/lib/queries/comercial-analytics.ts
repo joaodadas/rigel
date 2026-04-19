@@ -61,6 +61,7 @@ export interface ClienteInativo {
 }
 
 export interface ProdutoEvolucao {
+  idProduto: number;
   produto: string;
   mes: string;
   faturamento: number;
@@ -406,22 +407,21 @@ async function _fetchClientesInativos(
 // ---------------------------------------------------------------------------
 // 6. getProdutosEvolucao  (JS logic, Redis cache)
 // ---------------------------------------------------------------------------
-// TODO: Product-level breakdown requires product-pedido relation table to be
-//       synced. For now, returns monthly faturamento totals.
 
 export async function getProdutosEvolucao(
   meses: number = 6,
-  _produtoFilter?: string
+  produtoFilter?: number
 ): Promise<ProdutoEvolucao[]> {
+  const now = new Date();
   return cacheGetOrFetchSWR(
-    CACHE_KEYS.biEvolucao(meses),
-    () => _fetchProdutosEvolucao(meses, _produtoFilter)
+    CACHE_KEYS.biProdutosEvolucao(1, 12, now.getFullYear(), produtoFilter),
+    () => _fetchProdutosEvolucao(meses, produtoFilter)
   );
 }
 
 async function _fetchProdutosEvolucao(
   meses: number = 6,
-  _produtoFilter?: string
+  produtoFilter?: number
 ): Promise<ProdutoEvolucao[]> {
   const supabase = createSupabaseServer();
   const now = new Date();
@@ -431,14 +431,15 @@ async function _fetchProdutosEvolucao(
   );
   const endDate = toDateStr(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
-  const rows = await supabaseFetchAll<{
+  // Step 1: Fetch B2B pedido IDs + dates
+  const pedidos = await supabaseFetchAll<{
+    id_pedido: string;
     data_pedido: string;
-    valor_total_nota: string;
   }>(
     (from, to) =>
       supabase
         .from("pedidos")
-        .select("data_pedido, valor_total_nota")
+        .select("id_pedido, data_pedido")
         .eq("status_pedido", "Atendido")
         .eq("lixeira", "Nao")
         .gte("data_pedido", startDate)
@@ -447,26 +448,143 @@ async function _fetchProdutosEvolucao(
         .range(from, to)
   );
 
-  // Group by YYYY-MM
-  const groups: Record<string, { faturamento: number; quantidade: number }> =
-    {};
-  for (const row of rows) {
-    const date = String(row.data_pedido ?? "");
-    const mes = date.slice(0, 7); // YYYY-MM
-    if (!mes) continue;
-    if (!groups[mes]) groups[mes] = { faturamento: 0, quantidade: 0 };
-    groups[mes].faturamento += Number(row.valor_total_nota) || 0;
-    groups[mes].quantidade += 1;
+  if (pedidos.length === 0) return [];
+
+  // Build pedido ID → date map
+  const pedidoDateMap: Record<string, string> = {};
+  for (const p of pedidos) {
+    pedidoDateMap[String(p.id_pedido)] = String(p.data_pedido ?? "");
+  }
+  const pedidoIds = Object.keys(pedidoDateMap).map(Number);
+
+  // Step 2: Fetch items from pedido_itens
+  // Batch in chunks of 500 to avoid URL length limits
+  const CHUNK_SIZE = 500;
+  let allItems: {
+    id_pedido: number;
+    id_produto: number;
+    desc_produto: string;
+    qtde_produto: number;
+    valor_total_produto: number;
+  }[] = [];
+
+  for (let i = 0; i < pedidoIds.length; i += CHUNK_SIZE) {
+    const chunk = pedidoIds.slice(i, i + CHUNK_SIZE);
+    let query = supabase
+      .from("pedido_itens")
+      .select(
+        "id_pedido, id_produto, desc_produto, qtde_produto, valor_total_produto"
+      )
+      .in("id_pedido", chunk);
+
+    if (produtoFilter != null) {
+      query = query.eq("id_produto", produtoFilter);
+    }
+
+    const { data, error } = await query;
+    if (!error && data) {
+      allItems = allItems.concat(data as typeof allItems);
+    }
   }
 
-  return Object.entries(groups)
-    .map(([mes, agg]) => ({
-      produto: "Total", // TODO: replace with product-level data
-      mes,
-      faturamento: agg.faturamento,
-      quantidade: agg.quantidade,
-    }))
-    .sort((a, b) => a.mes.localeCompare(b.mes));
+  // Fallback: if pedido_itens is empty (backfill hasn't run), aggregate from pedidos
+  if (allItems.length === 0) {
+    const pedidoRows = await supabaseFetchAll<{
+      data_pedido: string;
+      valor_total_nota: string;
+    }>(
+      (from, to) =>
+        supabase
+          .from("pedidos")
+          .select("data_pedido, valor_total_nota")
+          .eq("status_pedido", "Atendido")
+          .eq("lixeira", "Nao")
+          .gte("data_pedido", startDate)
+          .lte("data_pedido", endDate)
+          .in("vendedor_pedido", B2B_RAW_VARIATIONS)
+          .range(from, to)
+    );
+
+    const groups: Record<string, { faturamento: number; quantidade: number }> =
+      {};
+    for (const row of pedidoRows) {
+      const date = String(row.data_pedido ?? "");
+      const mes = date.slice(0, 7);
+      if (!mes) continue;
+      if (!groups[mes]) groups[mes] = { faturamento: 0, quantidade: 0 };
+      groups[mes].faturamento += Number(row.valor_total_nota) || 0;
+      groups[mes].quantidade += 1;
+    }
+
+    return Object.entries(groups)
+      .map(([mes, agg]) => ({
+        idProduto: 0,
+        produto: "Total",
+        mes,
+        faturamento: agg.faturamento,
+        quantidade: agg.quantidade,
+      }))
+      .sort((a, b) => a.mes.localeCompare(b.mes));
+  }
+
+  // Step 3: Group by id_produto + desc_produto + month
+  const groups: Record<
+    string,
+    {
+      idProduto: number;
+      descProduto: string;
+      meses: Record<string, { faturamento: number; quantidade: number }>;
+      totalFaturamento: number;
+    }
+  > = {};
+
+  for (const item of allItems) {
+    const pedidoDate = pedidoDateMap[String(item.id_pedido)] ?? "";
+    const mes = pedidoDate.slice(0, 7);
+    if (!mes) continue;
+
+    const key = String(item.id_produto);
+    if (!groups[key]) {
+      groups[key] = {
+        idProduto: Number(item.id_produto),
+        descProduto: String(item.desc_produto ?? ""),
+        meses: {},
+        totalFaturamento: 0,
+      };
+    }
+
+    const g = groups[key];
+    if (!g.meses[mes]) g.meses[mes] = { faturamento: 0, quantidade: 0 };
+    const valor = Number(item.valor_total_produto) || 0;
+    const qtde = Number(item.qtde_produto) || 0;
+    g.meses[mes].faturamento += valor;
+    g.meses[mes].quantidade += qtde;
+    g.totalFaturamento += valor;
+  }
+
+  // Step 4: Sort by total faturamento DESC, take top 20 if no filter
+  let sortedProducts = Object.values(groups).sort(
+    (a, b) => b.totalFaturamento - a.totalFaturamento
+  );
+  if (produtoFilter == null) {
+    sortedProducts = sortedProducts.slice(0, 20);
+  }
+
+  // Step 5: Flatten to ProdutoEvolucao[]
+  const result: ProdutoEvolucao[] = [];
+  for (const prod of sortedProducts) {
+    for (const [mes, agg] of Object.entries(prod.meses)) {
+      result.push({
+        idProduto: prod.idProduto,
+        produto: prod.descProduto,
+        mes,
+        faturamento: agg.faturamento,
+        quantidade: agg.quantidade,
+      });
+    }
+  }
+
+  return result.sort((a, b) => a.mes.localeCompare(b.mes));
 }
 
 // ---------------------------------------------------------------------------
@@ -596,4 +714,179 @@ async function _fetchTop20Clientes(
 
   // Assign 1-indexed position
   return ranked.map((item, idx) => ({ ...item, posicao: idx + 1 }));
+}
+
+// ---------------------------------------------------------------------------
+// 8. getClientesB2BList  (JS logic, Redis cache)
+// ---------------------------------------------------------------------------
+
+export interface ClienteB2B {
+  id: number;
+  nome: string;
+}
+
+export async function getClientesB2BList(): Promise<ClienteB2B[]> {
+  return cacheGetOrFetchSWR(CACHE_KEYS.biClientesB2BList, _fetchClientesB2BList);
+}
+
+async function _fetchClientesB2BList(): Promise<ClienteB2B[]> {
+  const supabase = createSupabaseServer();
+
+  const rows = await supabaseFetchAll<{
+    id_cliente: string;
+    fantasia_cliente: string;
+    razao_cliente: string;
+  }>(
+    (from, to) =>
+      supabase
+        .from("clientes")
+        .select("id_cliente, fantasia_cliente, razao_cliente")
+        .eq("lixeira", "Nao")
+        .in("vendedor_cliente", B2B_RAW_VARIATIONS)
+        .range(from, to)
+  );
+
+  return rows
+    .map((r) => ({
+      id: Number(r.id_cliente),
+      nome: String(r.fantasia_cliente || r.razao_cliente || ""),
+    }))
+    .filter((c) => c.nome.length > 0)
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+}
+
+// ---------------------------------------------------------------------------
+// 9. getDemonstrativoCliente  (JS logic, Redis cache)
+// ---------------------------------------------------------------------------
+
+export interface DemonstrativoCliente {
+  produtos: {
+    idProduto: number;
+    descProduto: string;
+    meses: Record<string, number>;
+    total: number;
+  }[];
+  totaisMes: Record<string, number>;
+  totalGeral: number;
+}
+
+export async function getDemonstrativoCliente(
+  idCliente: number,
+  mesInicio: number,
+  mesFim: number,
+  ano: number
+): Promise<DemonstrativoCliente> {
+  return cacheGetOrFetchSWR(
+    CACHE_KEYS.biDemoCliente(idCliente, mesInicio, mesFim, ano),
+    () => _fetchDemonstrativoCliente(idCliente, mesInicio, mesFim, ano)
+  );
+}
+
+async function _fetchDemonstrativoCliente(
+  idCliente: number,
+  mesInicio: number,
+  mesFim: number,
+  ano: number
+): Promise<DemonstrativoCliente> {
+  const supabase = createSupabaseServer();
+  const { start, end } = buildDateRange(mesInicio, mesFim, ano);
+
+  // Step 1: Fetch B2B pedidos for this client in the date range
+  const pedidos = await supabaseFetchAll<{
+    id_pedido: string;
+    data_pedido: string;
+  }>(
+    (from, to) =>
+      supabase
+        .from("pedidos")
+        .select("id_pedido, data_pedido")
+        .eq("status_pedido", "Atendido")
+        .eq("lixeira", "Nao")
+        .eq("id_cliente", idCliente)
+        .gte("data_pedido", start)
+        .lte("data_pedido", end)
+        .in("vendedor_pedido", B2B_RAW_VARIATIONS)
+        .range(from, to)
+  );
+
+  if (pedidos.length === 0) {
+    return { produtos: [], totaisMes: {}, totalGeral: 0 };
+  }
+
+  // Build pedido ID → date map
+  const pedidoDateMap: Record<string, string> = {};
+  for (const p of pedidos) {
+    pedidoDateMap[String(p.id_pedido)] = String(p.data_pedido ?? "");
+  }
+  const pedidoIds = Object.keys(pedidoDateMap).map(Number);
+
+  // Step 2: Fetch items from pedido_itens
+  const CHUNK_SIZE = 500;
+  let allItems: {
+    id_pedido: number;
+    id_produto: number;
+    desc_produto: string;
+    valor_total_produto: number;
+  }[] = [];
+
+  for (let i = 0; i < pedidoIds.length; i += CHUNK_SIZE) {
+    const chunk = pedidoIds.slice(i, i + CHUNK_SIZE);
+    const { data, error } = await supabase
+      .from("pedido_itens")
+      .select("id_pedido, id_produto, desc_produto, valor_total_produto")
+      .in("id_pedido", chunk);
+
+    if (!error && data) {
+      allItems = allItems.concat(data as typeof allItems);
+    }
+  }
+
+  if (allItems.length === 0) {
+    return { produtos: [], totaisMes: {}, totalGeral: 0 };
+  }
+
+  // Step 3: Build pivot — group by id_produto + desc_produto, then by month
+  const productMap: Record<
+    string,
+    {
+      idProduto: number;
+      descProduto: string;
+      meses: Record<string, number>;
+      total: number;
+    }
+  > = {};
+  const totaisMes: Record<string, number> = {};
+  let totalGeral = 0;
+
+  for (const item of allItems) {
+    const pedidoDate = pedidoDateMap[String(item.id_pedido)] ?? "";
+    const mes = pedidoDate.slice(0, 7); // YYYY-MM
+    if (!mes) continue;
+
+    const valor = Number(item.valor_total_produto) || 0;
+    const key = String(item.id_produto);
+
+    if (!productMap[key]) {
+      productMap[key] = {
+        idProduto: Number(item.id_produto),
+        descProduto: String(item.desc_produto ?? ""),
+        meses: {},
+        total: 0,
+      };
+    }
+
+    const prod = productMap[key];
+    prod.meses[mes] = (prod.meses[mes] || 0) + valor;
+    prod.total += valor;
+
+    totaisMes[mes] = (totaisMes[mes] || 0) + valor;
+    totalGeral += valor;
+  }
+
+  // Step 4: Sort products by total DESC
+  const produtos = Object.values(productMap).sort(
+    (a, b) => b.total - a.total
+  );
+
+  return { produtos, totaisMes, totalGeral };
 }
