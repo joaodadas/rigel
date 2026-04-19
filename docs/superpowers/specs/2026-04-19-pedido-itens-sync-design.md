@@ -21,6 +21,14 @@ Os indicadores 5 (evolucao de faturamento por produto) e 6 (demonstrativo de com
 
 Sincronizar itens **apenas de pedidos B2B** (vendedor na lista de inclusao `B2B_VENDEDORES_NORMALIZED`). Pedidos de marketplace/e-commerce sao ignorados — nao aparecem no BI Comercial.
 
+### Mapeamento de IDs (CRITICO)
+
+O VHSys usa dois campos no pedido: `id_ped` (ID interno unico) e `id_pedido` (numero do pedido — pode ser 0). Na tabela Supabase `pedidos`, o PK `id_pedido` corresponde ao `id_ped` do VHSys.
+
+O endpoint `GET /pedidos/{id_ped}/produtos` retorna itens com campo `id_pedido` que referencia o `id_ped` pai. Portanto: `pedido_itens.id_pedido` faz JOIN com `pedidos.id_pedido` no Supabase.
+
+**IMPORTANTE:** Antes de rodar o backfill, validar empiricamente chamando o endpoint para 1 pedido real e verificando que `item.id_pedido` == `id_ped` da URL.
+
 ---
 
 ## 2. Tabela `pedido_itens`
@@ -54,6 +62,8 @@ Campos extras da API (`ipi_produto`, `icms_produto`, `peso_produto`, etc.) nao s
 
 **Novo endpoint:** `POST /api/sync/pedido-itens`
 
+**Protecao:** Verificar `CRON_SECRET` no header (mesmo padrao dos outros endpoints de sync).
+
 Fluxo:
 1. Buscar do Supabase: todos os `id_ped` de pedidos onde `UPPER(TRIM(vendedor_pedido)) = ANY(B2B_VENDEDORES)` e `data_pedido >= 12 meses atras` e `status_pedido = 'Atendido'` e `lixeira = 'Nao'`
 2. Filtrar: remover `id_ped` que ja existem na tabela `pedido_itens` (evitar re-fetch)
@@ -66,13 +76,15 @@ Fluxo:
 
 **Adicionar ao `runIncrementalSync()` existente em `src/lib/sync/incremental.ts`:**
 
-Apos sincronizar pedidos (que ja acontece), pegar os IDs dos pedidos B2B que foram criados/modificados nesse ciclo e buscar seus itens.
+Apos sincronizar pedidos (que ja acontece), buscar itens dos pedidos B2B recentes que ainda nao foram sincronizados.
 
 Fluxo:
-1. O incremental sync ja busca pedidos modificados desde `lastSync`
-2. Filtrar os que sao B2B (vendedor na lista)
-3. Para cada um, buscar itens via `GET /pedidos/{id_ped}/produtos`
+1. O incremental sync ja roda e sincroniza pedidos modificados
+2. **Apos** a sync de pedidos, fazer query separada: `SELECT id_pedido FROM pedidos WHERE data_mod_pedido >= lastSync AND UPPER(TRIM(vendedor_pedido)) = ANY(B2B) AND id_pedido NOT IN (SELECT DISTINCT id_pedido FROM pedido_itens)`
+3. Para cada ID resultante, buscar itens via `GET /pedidos/{id_ped}/produtos`
 4. Upsert no `pedido_itens`
+
+Essa abordagem nao modifica o fluxo de sync existente — e um passo adicional no final.
 
 ### 3.3 VHSys Client
 
@@ -145,11 +157,19 @@ interface DemonstrativoCliente {
 
 ### 4.3 Cache Keys
 
-Adicionar:
+Adicionar ao `CACHE_KEYS`:
 ```
 biProdutosEvolucao: (mi, mf, a, prodId?) => `bi:prod-evo:${mi}:${mf}:${a}:${prodId || 'all'}`
 biDemoCliente: (clienteId, mi, mf, a) => `bi:demo:${clienteId}:${mi}:${mf}:${a}`
+biClientesB2BList: "bi:clientes-b2b-list"
 ```
+
+### 4.4 Invalidacao de Cache
+
+Adicionar ao `invalidateAllCaches()` em `src/lib/redis/client.ts`:
+- Deletar keys `bi:prod-evo:*` para o ano/meses correntes (mesma logica dos biKpis)
+- Deletar `bi:clientes-b2b-list`
+- Keys `bi:demo:*` nao precisam de invalidacao proativa (TTL de 1h e suficiente, dados mudam lentamente)
 
 ---
 
@@ -180,8 +200,9 @@ Substituir a secao "Evolucao do Faturamento" atual (que mostra apenas totais men
 - **CSV export**
 
 O seletor de cliente precisa de uma query leve para buscar nomes:
-- Reutilizar a lista de clientes ja buscada no server component, ou
-- Nova query `getClientesB2BList()` que retorna id + nome dos ~1.100 clientes B2B
+- Nova query `getClientesB2BList()` que retorna `{id: number, nome: string}[]` dos ~1.100 clientes B2B
+- Cacheada com key `bi:clientes-b2b-list` (TTL 1h)
+- Buscada no server component e passada como prop
 
 ---
 
