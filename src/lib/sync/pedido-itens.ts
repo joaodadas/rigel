@@ -32,10 +32,10 @@ export async function syncPedidoItens(
   cutoffDate.setMonth(cutoffDate.getMonth() - monthsBack);
   const cutoff = cutoffDate.toISOString().split("T")[0];
 
-  // 2. Query B2B pedidos (Atendido, not trashed, within date range)
+  // 2. Query B2B pedidos — need BOTH id_pedido (our PK/FK) and id_ped (VHSys API ID)
   const { data: directPedidos } = await supabase
     .from("pedidos")
-    .select("id_pedido")
+    .select("id_pedido, id_ped")
     .eq("status_pedido", "Atendido")
     .eq("lixeira", "Nao")
     .gte("data_pedido", cutoff)
@@ -51,8 +51,8 @@ export async function syncPedidoItens(
     .select("id_pedido");
   const syncedSet = new Set((synced ?? []).map((r) => r.id_pedido));
   const toSync = directPedidos
-    .map((p) => p.id_pedido)
-    .filter((id) => !syncedSet.has(id));
+    .filter((p) => !syncedSet.has(p.id_pedido))
+    .map((p) => ({ idPedido: p.id_pedido as number, idPed: p.id_ped as number }));
 
   return _processItens(supabase, toSync, start);
 }
@@ -85,7 +85,7 @@ export async function syncNewPedidoItens(): Promise<SyncResult> {
   const cutoff = new Date(lastSync).toISOString().split("T")[0];
   const { data: pedidos } = await supabase
     .from("pedidos")
-    .select("id_pedido")
+    .select("id_pedido, id_ped")
     .eq("status_pedido", "Atendido")
     .eq("lixeira", "Nao")
     .gte("data_mod_pedido", cutoff)
@@ -102,7 +102,9 @@ export async function syncNewPedidoItens(): Promise<SyncResult> {
     .select("id_pedido")
     .in("id_pedido", ids);
   const existingSet = new Set((existing ?? []).map((r) => r.id_pedido));
-  const toSync = ids.filter((id) => !existingSet.has(id));
+  const toSync = pedidos
+    .filter((p) => !existingSet.has(p.id_pedido))
+    .map((p) => ({ idPedido: p.id_pedido as number, idPed: p.id_ped as number }));
 
   if (!toSync.length) {
     return { pedidosProcessed: 0, itensInserted: 0, errors: 0, durationMs: Date.now() - start };
@@ -111,31 +113,38 @@ export async function syncNewPedidoItens(): Promise<SyncResult> {
   return _processItens(supabase, toSync, start);
 }
 
+interface PedidoRef {
+  idPedido: number; // Supabase PK (pedidos.id_pedido) — used as FK in pedido_itens
+  idPed: number;    // VHSys internal ID (pedidos.id_ped) — used in API URL
+}
+
 async function _processItens(
   supabase: ReturnType<typeof createSupabaseServer>,
-  pedidoIds: number[],
+  pedidos: PedidoRef[],
   startTime: number
 ): Promise<SyncResult> {
-  console.log(`[pedido-itens] Processing ${pedidoIds.length} pedidos`);
+  console.log(`[pedido-itens] Processing ${pedidos.length} pedidos`);
 
   let totalItens = 0;
   let errors = 0;
   const allItems: Record<string, unknown>[] = [];
 
   // Process in batches of CONCURRENCY
-  for (let i = 0; i < pedidoIds.length; i += CONCURRENCY) {
-    const batch = pedidoIds.slice(i, i + CONCURRENCY);
+  for (let i = 0; i < pedidos.length; i += CONCURRENCY) {
+    const batch = pedidos.slice(i, i + CONCURRENCY);
 
     const results = await Promise.allSettled(
-      batch.map((id) => vhsysFetchPedidoItens(id))
+      batch.map((p) => vhsysFetchPedidoItens(p.idPed)) // Use id_ped for VHSys API
     );
 
-    for (const result of results) {
+    for (let j = 0; j < results.length; j++) {
+      const result = results[j];
+      const pedido = batch[j];
       if (result.status === "fulfilled" && result.value.length > 0) {
         for (const item of result.value) {
           allItems.push({
             id_ped_produto: item.id_ped_produto,
-            id_pedido: item.id_pedido,
+            id_pedido: pedido.idPedido, // Use OUR Supabase PK as FK, not VHSys's id_pedido
             id_produto: item.id_produto,
             desc_produto: item.desc_produto,
             qtde_produto: Number(item.qtde_produto) || 0,
@@ -150,13 +159,13 @@ async function _processItens(
       }
     }
 
-    if (i + CONCURRENCY < pedidoIds.length) {
+    if (i + CONCURRENCY < pedidos.length) {
       await delay(DELAY_BETWEEN_BATCHES_MS);
     }
 
     // Progress log every 100 pedidos
-    if ((i + CONCURRENCY) % 100 === 0 || i + CONCURRENCY >= pedidoIds.length) {
-      console.log(`[pedido-itens] Progress: ${Math.min(i + CONCURRENCY, pedidoIds.length)}/${pedidoIds.length} pedidos, ${allItems.length} itens`);
+    if ((i + CONCURRENCY) % 100 === 0 || i + CONCURRENCY >= pedidos.length) {
+      console.log(`[pedido-itens] Progress: ${Math.min(i + CONCURRENCY, pedidos.length)}/${pedidos.length} pedidos, ${allItems.length} itens`);
     }
   }
 
@@ -186,10 +195,10 @@ async function _processItens(
     duration_ms: durationMs,
   });
 
-  console.log(`[pedido-itens] Done: ${totalItens} itens from ${pedidoIds.length} pedidos in ${durationMs}ms (${errors} errors)`);
+  console.log(`[pedido-itens] Done: ${totalItens} itens from ${pedidos.length} pedidos in ${durationMs}ms (${errors} errors)`);
 
   return {
-    pedidosProcessed: pedidoIds.length,
+    pedidosProcessed: pedidos.length,
     itensInserted: totalItens,
     errors,
     durationMs,
