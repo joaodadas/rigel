@@ -1,5 +1,5 @@
 import { VHSYS_BASE_URL, MAX_PAGE_SIZE } from "./endpoints";
-import type { VHSysResponse } from "./types";
+import type { VHSysResponse, VHSysPedidoItem } from "./types";
 
 function getHeaders(): HeadersInit {
   return {
@@ -118,4 +118,22 @@ export async function vhsysFetchAll<T>(
   }
 
   return all;
+}
+
+/**
+ * Fetches line items for a single order from VHSys.
+ * GET /pedidos/{idPed}/produtos
+ */
+export async function vhsysFetchPedidoItens(
+  idPed: number
+): Promise<VHSysPedidoItem[]> {
+  try {
+    const response = await vhsysGet<VHSysPedidoItem>(
+      `/pedidos/${idPed}/produtos`
+    );
+    return response.data ?? [];
+  } catch (error) {
+    console.warn(`[vhsys] Failed to fetch items for pedido ${idPed}:`, error);
+    return [];
+  }
 }

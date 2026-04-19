@@ -146,3 +146,26 @@ export interface VHSysVendedor {
   data_mod_vendedor: string;
   lixeira: string;
 }
+
+export interface VHSysPedidoItem {
+  id_ped_produto: number;
+  id_pedido: number;
+  id_produto: number;
+  id_almoxarifado: number;
+  id_lote: number;
+  desc_produto: string;
+  qtde_produto: string;
+  desconto_produto: string;
+  ipi_produto: string;
+  icms_produto: string;
+  valor_unit_produto: string;
+  valor_custo_produto: string;
+  valor_total_produto: string;
+  valor_desconto: string;
+  peso_produto: string;
+  peso_liq_produto: string;
+  info_adicional: string;
+  xPed_produto: string;
+  nItem_produto: string;
+  json_localizacoes: string;
+}
