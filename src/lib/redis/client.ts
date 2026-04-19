@@ -130,6 +130,17 @@ export const CACHE_KEYS = {
   biVendedorPrev: (mi: number, mf: number, a: number) =>
     `bi:vendedor-prev:${mi}:${mf}:${a}`,
 
+  // Product evolution (phase 2)
+  biProdutosEvolucao: (mi: number, mf: number, a: number, prodId?: number) =>
+    `bi:prod-evo:${mi}:${mf}:${a}:${prodId || "all"}`,
+
+  // Client demonstrativo
+  biDemoCliente: (clienteId: number, mi: number, mf: number, a: number) =>
+    `bi:demo:${clienteId}:${mi}:${mf}:${a}`,
+
+  // B2B clients list
+  biClientesB2BList: "bi:clientes-b2b-list",
+
   // Listing queries (entity, page, pageSize, search)
   list: (entity: string, page: number, size: number, search?: string) =>
     `list:${entity}:p${page}:s${size}:${search || "_"}`,
@@ -181,6 +192,16 @@ export async function invalidateAllCaches(): Promise<void> {
   for (const meses of [3, 6, 12]) {
     keys.push(CACHE_KEYS.biEvolucao(meses));
   }
+
+  // Product evolution keys
+  for (let mi = 1; mi <= currentMonth; mi++) {
+    for (let mf = mi; mf <= currentMonth; mf++) {
+      keys.push(CACHE_KEYS.biProdutosEvolucao(mi, mf, currentYear));
+    }
+  }
+
+  // B2B clients list
+  keys.push(CACHE_KEYS.biClientesB2BList);
 
   // Listing keys for first 5 pages of each entity
   for (const entity of LIST_ENTITIES) {

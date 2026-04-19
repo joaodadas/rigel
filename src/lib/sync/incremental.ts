@@ -2,6 +2,7 @@ import { createSupabaseServer } from "@/lib/supabase/client";
 import { vhsysFetchAll } from "@/lib/vhsys/client";
 import { ENDPOINTS } from "@/lib/vhsys/endpoints";
 import { invalidateAllCaches } from "@/lib/redis/client";
+import { syncNewPedidoItens } from "./pedido-itens";
 
 const BATCH_SIZE = 500;
 
@@ -101,6 +102,16 @@ export async function runIncrementalSync(): Promise<Record<string, number>> {
 
       results[entity.name] = -1; // Signal error
     }
+  }
+
+  // Sync new pedido items for B2B orders
+  try {
+    const itensResult = await syncNewPedidoItens();
+    results["pedido_itens"] = itensResult.itensInserted;
+    console.log(`[incremental] pedido_itens: ${itensResult.itensInserted} new items from ${itensResult.pedidosProcessed} pedidos`);
+  } catch (error) {
+    console.error("[incremental] pedido_itens sync failed:", error);
+    results["pedido_itens"] = -1;
   }
 
   await invalidateAllCaches();
