@@ -1,4 +1,5 @@
 import { createSupabaseServer } from "@/lib/supabase/client";
+import { supabaseFetchAll } from "@/lib/supabase/fetch-all";
 import { vhsysFetchPedidoItens } from "@/lib/vhsys/client";
 import { B2B_VENDEDORES_NORMALIZED } from "@/lib/config/vendedores-map";
 
@@ -32,27 +33,36 @@ export async function syncPedidoItens(
   cutoffDate.setMonth(cutoffDate.getMonth() - monthsBack);
   const cutoff = cutoffDate.toISOString().split("T")[0];
 
-  // 2. Query B2B pedidos — need BOTH id_pedido (our PK/FK) and id_ped (VHSys API ID)
-  const { data: directPedidos } = await supabase
-    .from("pedidos")
-    .select("id_pedido, id_ped")
-    .eq("status_pedido", "Atendido")
-    .eq("lixeira", "Nao")
-    .gte("data_pedido", cutoff)
-    .in("vendedor_pedido", B2B_VENDEDORES_NORMALIZED);
+  // 2. Query ALL B2B pedidos — need BOTH id_pedido (our PK/FK) and id_ped (VHSys API ID)
+  const directPedidos = await supabaseFetchAll<{ id_pedido: number; id_ped: number }>(
+    (from, to) =>
+      supabase
+        .from("pedidos")
+        .select("id_pedido, id_ped")
+        .eq("status_pedido", "Atendido")
+        .eq("lixeira", "Nao")
+        .gte("data_pedido", cutoff)
+        .in("vendedor_pedido", B2B_VENDEDORES_NORMALIZED)
+        .range(from, to)
+  );
 
-  if (!directPedidos?.length) {
+  if (!directPedidos.length) {
     return { pedidosProcessed: 0, itensInserted: 0, errors: 0, durationMs: Date.now() - start };
   }
 
   // 3. Filter out pedidos that already have items synced
-  const { data: synced } = await supabase
-    .from("pedido_itens")
-    .select("id_pedido");
-  const syncedSet = new Set((synced ?? []).map((r) => r.id_pedido));
+  const synced = await supabaseFetchAll<{ id_pedido: number }>(
+    (from, to) =>
+      supabase
+        .from("pedido_itens")
+        .select("id_pedido")
+        .range(from, to)
+  );
+  const syncedSet = new Set(synced.map((r) => r.id_pedido));
+  console.log(`[pedido-itens] Found ${directPedidos.length} B2B pedidos, ${syncedSet.size} already synced`);
   const toSync = directPedidos
     .filter((p) => !syncedSet.has(p.id_pedido))
-    .map((p) => ({ idPedido: p.id_pedido as number, idPed: p.id_ped as number }));
+    .map((p) => ({ idPedido: p.id_pedido, idPed: p.id_ped }));
 
   return _processItens(supabase, toSync, start);
 }
