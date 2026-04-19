@@ -45,6 +45,7 @@ export default async function AdminBIPage() {
       top20Geral={top20Geral}
       top20VI={top20VI}
       pedidosVendedorPrev={null}
+      clientesB2B={[]}
       defaultMes={currentMonth}
       defaultAno={currentYear}
       isAcumulado={true}

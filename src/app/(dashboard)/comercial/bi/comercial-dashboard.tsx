@@ -21,6 +21,7 @@ import type {
   ClienteInativo,
   ProdutoEvolucao,
   TopCliente,
+  ClienteB2B,
 } from "@/lib/queries/comercial-analytics";
 import { BiFilters, getMesLabel } from "./components/bi-filters";
 import { TopClientesSection } from "./components/top-clientes-section";
@@ -35,6 +36,7 @@ import {
   formatPct,
 } from "./components/formatters";
 import { ProdutosEvolucaoSection } from "./components/produtos-evolucao-section";
+import { DemoClienteSection } from "./components/demo-cliente-section";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,6 +52,7 @@ interface ComercialDashboardProps {
   top20Geral: TopCliente[];
   top20VI: TopCliente[];
   pedidosVendedorPrev: PedidoVendedor[] | null;
+  clientesB2B: ClienteB2B[];
   defaultMes: number;
   defaultAno: number;
   isAcumulado: boolean;
@@ -84,6 +87,7 @@ export function ComercialDashboard({
   top20Geral,
   top20VI,
   pedidosVendedorPrev,
+  clientesB2B,
   defaultMes,
   defaultAno,
   isAcumulado,
@@ -239,6 +243,14 @@ export function ComercialDashboard({
 
       {/* Indicador 5: Evolucao Faturamento por Produto */}
       <ProdutosEvolucaoSection evolucao={evolucao} mes={mes} ano={ano} />
+
+      {/* Indicador 6: Demonstrativo por Cliente */}
+      <DemoClienteSection
+        clientesB2B={clientesB2B}
+        mesInicio={isAcumulado ? 1 : mes}
+        mesFim={isAcumulado ? new Date().getMonth() + 1 : mes}
+        ano={ano}
+      />
     </div>
   );
 }

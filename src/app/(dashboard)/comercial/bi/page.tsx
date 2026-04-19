@@ -8,6 +8,7 @@ import {
   getClientesInativos,
   getProdutosEvolucao,
   getTop20Clientes,
+  getClientesB2BList,
 } from "@/lib/queries/comercial-analytics";
 import { ComercialDashboard } from "./comercial-dashboard";
 
@@ -59,6 +60,7 @@ export default async function ComercialBIPage({ searchParams }: PageProps) {
     top20Geral,
     top20VI,
     pedidosVendedorPrev,
+    clientesB2B,
   ] = await Promise.all([
     getComercialKPIs(mesInicio, mesFim, ano),
     getPedidosPorVendedor(mesInicio, mesFim, ano),
@@ -71,6 +73,7 @@ export default async function ComercialBIPage({ searchParams }: PageProps) {
     prevMes !== null && prevAno !== null
       ? getPedidosPorVendedor(prevMes, prevMes, prevAno)
       : (null as unknown as ReturnType<typeof getPedidosPorVendedor>),
+    getClientesB2BList(),
   ]);
 
   return (
@@ -84,6 +87,7 @@ export default async function ComercialBIPage({ searchParams }: PageProps) {
       top20Geral={top20Geral}
       top20VI={top20VI}
       pedidosVendedorPrev={pedidosVendedorPrev as Awaited<ReturnType<typeof getPedidosPorVendedor>> | null}
+      clientesB2B={clientesB2B}
       defaultMes={mes}
       defaultAno={ano}
       isAcumulado={isAcumulado}
