@@ -3,15 +3,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  LineChart,
-  Line,
-} from "recharts";
-import {
   DollarSign,
   Target,
   TrendingUp,
@@ -19,27 +10,9 @@ import {
   Users,
   UserX,
   Database,
-  Download,
 } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 // Select components now used via BiFilters
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { KpiCard } from "@/components/dashboard/kpi-card";
-import { exportToCsv } from "@/lib/utils/csv";
 import type {
   ComercialKPIs,
   PedidoVendedor,
@@ -60,8 +33,8 @@ import {
   formatBRLFull,
   formatNumber,
   formatPct,
-  ChartTooltipContent,
 } from "./components/formatters";
+import { ProdutosEvolucaoSection } from "./components/produtos-evolucao-section";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -96,21 +69,6 @@ const MESES = [
   { value: 11, label: "Novembro" },
   { value: 12, label: "Dezembro" },
 ];
-
-const MESES_CURTOS: Record<string, string> = {
-  "01": "Jan",
-  "02": "Fev",
-  "03": "Mar",
-  "04": "Abr",
-  "05": "Mai",
-  "06": "Jun",
-  "07": "Jul",
-  "08": "Ago",
-  "09": "Set",
-  "10": "Out",
-  "11": "Nov",
-  "12": "Dez",
-};
 
 // ---------------------------------------------------------------------------
 // Component
@@ -149,37 +107,6 @@ export function ComercialDashboard({
     clientesStatus.forEach((c) => names.add(c.vendedor));
     return Array.from(names).sort();
   }, [pedidosVendedor, clientesStatus]);
-
-  // Evolucao line chart
-  const evolucaoChart = useMemo(
-    () =>
-      evolucao.map((e) => {
-        const [, mm] = e.mes.split("-");
-        return {
-          mes: MESES_CURTOS[mm] ?? e.mes,
-          faturamento: e.faturamento,
-        };
-      }),
-    [evolucao]
-  );
-
-  // Evolucao table with variation
-  const evolucaoTable = useMemo(() => {
-    return evolucao.map((e, i) => {
-      const prev = i > 0 ? evolucao[i - 1].faturamento : null;
-      const variacao =
-        prev !== null && prev > 0
-          ? ((e.faturamento - prev) / prev) * 100
-          : null;
-      const [, mm] = e.mes.split("-");
-      return {
-        mes: MESES_CURTOS[mm] ?? e.mes,
-        mesFull: e.mes,
-        faturamento: e.faturamento,
-        variacao,
-      };
-    });
-  }, [evolucao]);
 
   // KPI cards data
   const kpiCards = [
@@ -310,111 +237,8 @@ export function ComercialDashboard({
         vendedorFilter={vendedorFilter}
       />
 
-      {/* Indicador 5: Evolucao Faturamento */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold">
-            Evolucao do Faturamento
-          </CardTitle>
-          <CardDescription>
-            Faturamento mensal dos ultimos 6 meses
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Line Chart */}
-          {evolucaoChart.length > 0 && (
-            <ResponsiveContainer width="100%" height={320}>
-              <LineChart
-                data={evolucaoChart}
-                margin={{ left: 20, right: 20, top: 10, bottom: 5 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="var(--color-border)"
-                />
-                <XAxis
-                  dataKey="mes"
-                  tick={{ fontSize: 12, fill: "var(--color-muted-foreground)" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tickFormatter={(v: number) => formatBRL(v)}
-                  tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={100}
-                />
-                <Tooltip content={<ChartTooltipContent />} />
-                <Line
-                  type="monotone"
-                  dataKey="faturamento"
-                  stroke="var(--color-foreground)"
-                  strokeWidth={2}
-                  dot={{ r: 4, fill: "var(--color-foreground)" }}
-                  activeDot={{ r: 6 }}
-                  name="Faturamento"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-
-          {/* Table */}
-          <div className="overflow-x-auto rounded-lg border border-border/50">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    Mes
-                  </TableHead>
-                  <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    Faturamento
-                  </TableHead>
-                  <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                    Variacao
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {evolucaoTable.map((e) => (
-                  <TableRow key={e.mesFull} className="hover:bg-muted/50">
-                    <TableCell className="font-medium">{e.mes}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatBRL(e.faturamento)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {e.variacao !== null ? (
-                        <span
-                          className={
-                            e.variacao >= 0
-                              ? "text-emerald-600 dark:text-emerald-400"
-                              : "text-red-600 dark:text-red-400"
-                          }
-                        >
-                          {e.variacao >= 0 ? "+" : ""}
-                          {formatPct(e.variacao)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {evolucaoTable.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={3}
-                      className="h-16 text-center text-muted-foreground"
-                    >
-                      Nenhum dado disponivel
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Indicador 5: Evolucao Faturamento por Produto */}
+      <ProdutosEvolucaoSection evolucao={evolucao} mes={mes} ano={ano} />
     </div>
   );
 }
