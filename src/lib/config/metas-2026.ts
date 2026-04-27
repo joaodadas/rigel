@@ -24,9 +24,8 @@ export interface MetaVendedor {
 }
 
 export const METAS_VENDEDORES: MetaVendedor[] = [
-  // Vendas Internas
-  { nome: "Aline (VI-01)", tipo: "vendas_internas", meta_2026: 3000000, crescimento: "N/A" },
-  { nome: "Fátima (VI-02)", tipo: "vendas_internas", meta_2026: 646425, crescimento: "N/A" },
+  // Vendas Internas (Aline VI-01 + Fátima VI-02 — fundidas pois VHSys não diferencia)
+  { nome: "Vendas Internas", tipo: "vendas_internas", meta_2026: 3646425, crescimento: "N/A" },
   // Representantes
   { nome: "Edwilson", tipo: "representante", fat_2025: 2470091, meta_2026: 3119621, crescimento: "26.3%" },
   { nome: "Claudio", tipo: "representante", fat_2025: 2365313, meta_2026: 2365313, crescimento: "0%", status: "mantido" },

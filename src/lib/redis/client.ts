@@ -107,12 +107,13 @@ export const CACHE_KEYS = {
   // KPI / dashboard
   kpiAdmin: "kpi:admin",
 
-  // BI analytics (dynamic: mesInicio, mesFim, ano)
-  biKpis: (mi: number, mf: number, a: number) => `bi:kpis:${mi}:${mf}:${a}`,
-  biVendedor: (mi: number, mf: number, a: number) =>
-    `bi:vendedor:${mi}:${mf}:${a}`,
-  biRegiao: (mi: number, mf: number, a: number) =>
-    `bi:regiao:${mi}:${mf}:${a}`,
+  // BI analytics (dynamic: mesInicio, mesFim, ano, vendedor opcional)
+  biKpis: (mi: number, mf: number, a: number, v?: string) =>
+    `bi:kpis:${mi}:${mf}:${a}:${v || "_all"}`,
+  biVendedor: (mi: number, mf: number, a: number, v?: string) =>
+    `bi:vendedor:${mi}:${mf}:${a}:${v || "_all"}`,
+  biRegiao: (mi: number, mf: number, a: number, v?: string) =>
+    `bi:regiao:${mi}:${mf}:${a}:${v || "_all"}`,
 
   // BI static
   biClientesStatus: "bi:clientes-status",
