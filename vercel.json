@@ -3,6 +3,10 @@
     {
       "path": "/api/sync/incremental",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-pedido-itens",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
