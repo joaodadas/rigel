@@ -1,11 +1,38 @@
 "use client"
 
-import { useState, useMemo } from "react"
-// react-simple-maps does not ship its own types; declared in src/types/react-simple-maps.d.ts
-import { ComposableMap, Geographies, Geography } from "react-simple-maps"
+import { useEffect, useMemo, useState } from "react"
+import { geoMercator, geoPath } from "d3-geo"
+import type { Feature, FeatureCollection, Geometry, Polygon, MultiPolygon, Position } from "geojson"
 import type { PedidoRegiao } from "@/lib/queries/comercial-analytics"
 
 const GEO_URL = "/maps/br-states.json"
+const WIDTH = 600
+const HEIGHT = 520
+
+interface StateProps {
+  sigla: string
+  name?: string
+}
+
+// O GeoJSON dos estados BR vem com rings em sentido horário (convenção antiga).
+// d3-geo segue RFC 7946 (anti-horário) — rings horários são interpretados como
+// "complemento do mundo", o que faz fitSize calcular escala errada por ordem de
+// magnitude. Aqui invertemos cada ring uma vez no carregamento.
+function rewindRing(ring: Position[]): Position[] {
+  return ring.slice().reverse()
+}
+function rewindGeometry(geom: Geometry): Geometry {
+  if (geom.type === "Polygon") {
+    return { ...geom, coordinates: (geom as Polygon).coordinates.map(rewindRing) }
+  }
+  if (geom.type === "MultiPolygon") {
+    return {
+      ...geom,
+      coordinates: (geom as MultiPolygon).coordinates.map((poly) => poly.map(rewindRing)),
+    }
+  }
+  return geom
+}
 
 interface HeatmapBRProps {
   data: PedidoRegiao[]
@@ -27,7 +54,26 @@ const formatNumber = (v: number) => new Intl.NumberFormat("pt-BR").format(v)
  * Usa escala linear sobre `metric` (valor ou qtd). Tom = oklch da accent.
  */
 export function HeatmapBR({ data, metric = "valor" }: HeatmapBRProps) {
+  const [features, setFeatures] = useState<Feature<Geometry, StateProps>[]>([])
   const [hovered, setHovered] = useState<{ uf: string; x: number; y: number } | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(GEO_URL)
+      .then((r) => r.json() as Promise<FeatureCollection<Geometry, StateProps>>)
+      .then((fc) => {
+        if (cancelled) return
+        const rewound = (fc.features ?? []).map((f) => ({
+          ...f,
+          geometry: rewindGeometry(f.geometry),
+        }))
+        setFeatures(rewound)
+      })
+      .catch((e) => console.error("[HeatmapBR] failed to load geo:", e))
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const byUf = useMemo(() => {
     const map = new Map<string, PedidoRegiao>()
@@ -44,52 +90,51 @@ export function HeatmapBR({ data, metric = "valor" }: HeatmapBRProps) {
     return m || 1
   }, [data, metric])
 
+  // Projeção Mercator auto-ajustada à bbox dos features.
+  const pathFor = useMemo(() => {
+    if (features.length === 0) return null
+    const projection = geoMercator().fitSize([WIDTH, HEIGHT], {
+      type: "FeatureCollection",
+      features,
+    } as FeatureCollection<Geometry, StateProps>)
+    return geoPath(projection)
+  }, [features])
+
   const hoveredRow = hovered ? byUf.get(hovered.uf) : null
 
   return (
     <div className="relative">
-      <ComposableMap
-        projection="geoMercator"
-        projectionConfig={{ scale: 700, center: [-54, -15] }}
-        width={600}
-        height={520}
-        style={{ width: "100%", height: "auto" }}
+      <svg
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        preserveAspectRatio="xMidYMid meet"
+        className="h-auto w-full"
       >
-        <Geographies geography={GEO_URL}>
-          {({ geographies }: { geographies: Array<{ rsmKey: string; properties: Record<string, unknown> }> }) =>
-            geographies.map((geo) => {
-              const uf = String(geo.properties.sigla ?? "")
-              const row = byUf.get(uf)
-              const value = row ? (metric === "valor" ? row.valorTotal : row.qtdPedidos) : 0
-              const intensity = value > 0 ? Math.max(0.08, Math.min(1, value / max)) : 0
-              const fill = value > 0
+        {pathFor &&
+          features.map((f) => {
+            const uf = String(f.properties.sigla ?? "")
+            const row = byUf.get(uf)
+            const value = row ? (metric === "valor" ? row.valorTotal : row.qtdPedidos) : 0
+            const intensity = value > 0 ? Math.max(0.08, Math.min(1, value / max)) : 0
+            const fill =
+              value > 0
                 ? `color-mix(in oklch, var(--color-foreground) ${Math.round(intensity * 80)}%, var(--color-muted))`
                 : "var(--color-muted)"
-              return (
-                <Geography
-                  key={geo.rsmKey}
-                  geography={geo}
-                  fill={fill}
-                  stroke="var(--color-background)"
-                  strokeWidth={0.6}
-                  style={{
-                    default: { outline: "none" },
-                    hover: { outline: "none", fill: "var(--color-foreground)", cursor: "pointer" },
-                    pressed: { outline: "none" },
-                  }}
-                  onMouseEnter={(e: React.MouseEvent) => {
-                    setHovered({ uf, x: e.clientX, y: e.clientY })
-                  }}
-                  onMouseMove={(e: React.MouseEvent) => {
-                    setHovered({ uf, x: e.clientX, y: e.clientY })
-                  }}
-                  onMouseLeave={() => setHovered(null)}
-                />
-              )
-            })
-          }
-        </Geographies>
-      </ComposableMap>
+            const d = pathFor(f as Feature<Geometry>) ?? ""
+            const isHovered = hovered?.uf === uf
+            return (
+              <path
+                key={uf}
+                d={d}
+                fill={isHovered ? "var(--color-foreground)" : fill}
+                stroke="var(--color-background)"
+                strokeWidth={0.6}
+                style={{ cursor: "pointer", transition: "fill 120ms" }}
+                onMouseMove={(e) => setHovered({ uf, x: e.clientX, y: e.clientY })}
+                onMouseLeave={() => setHovered(null)}
+              />
+            )
+          })}
+      </svg>
 
       {/* Tooltip flutuante */}
       {hovered && (
@@ -120,7 +165,9 @@ export function HeatmapBR({ data, metric = "valor" }: HeatmapBRProps) {
           }}
         />
         <span>Maior</span>
-        <span className="ml-2 tabular-nums">máx: {metric === "valor" ? formatBRL(max) : formatNumber(max)}</span>
+        <span className="ml-2 tabular-nums">
+          máx: {metric === "valor" ? formatBRL(max) : formatNumber(max)}
+        </span>
       </div>
     </div>
   )
