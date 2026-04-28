@@ -122,6 +122,10 @@ export const CACHE_KEYS = {
   // BI evolucao (dynamic: meses)
   biEvolucao: (meses: number) => `bi:evolucao:${meses}`,
 
+  // BI top produtos (dynamic: mesInicio, mesFim, ano, topN, vendedor opcional)
+  biProdutosTop: (mi: number, mf: number, a: number, n: number, v?: string) =>
+    `bi:produtos-top:${mi}:${mf}:${a}:${n}:${v || "_all"}`,
+
   // Listing queries (entity, page, pageSize, search)
   list: (entity: string, page: number, size: number, search?: string) =>
     `list:${entity}:p${page}:s${size}:${search || "_"}`,
@@ -166,6 +170,7 @@ export async function invalidateAllCaches(): Promise<void> {
       keys.push(CACHE_KEYS.biKpis(mi, mf, currentYear));
       keys.push(CACHE_KEYS.biVendedor(mi, mf, currentYear));
       keys.push(CACHE_KEYS.biRegiao(mi, mf, currentYear));
+      keys.push(CACHE_KEYS.biProdutosTop(mi, mf, currentYear, 20));
     }
   }
 

@@ -66,6 +66,7 @@ import type {
   ClienteVendedorStatus,
   ClienteInativo,
   ProdutoEvolucao,
+  ProdutosTopEvolucao,
   TopCliente,
 } from "@/lib/queries/comercial-analytics";
 
@@ -82,6 +83,7 @@ interface ComercialDashboardProps {
   clientesStatus: ClienteVendedorStatus[];
   clientesInativos: ClienteInativo[];
   evolucao: ProdutoEvolucao[];
+  produtosTop: ProdutosTopEvolucao;
   topGeral: TopCliente[];
   topInternas: TopCliente[];
   defaultMes: number;
@@ -393,6 +395,7 @@ export function ComercialDashboard({
   clientesStatus,
   clientesInativos,
   evolucao,
+  produtosTop,
   topGeral,
   topInternas,
   defaultMes,
@@ -409,6 +412,7 @@ export function ComercialDashboard({
   const [faixaInatividade, setFaixaInatividade] = useState("todas");
   const [buscaInativo, setBuscaInativo] = useState("");
   const [topTab, setTopTab] = useState<"geral" | "internas">("geral");
+  const [produtoSelecionado, setProdutoSelecionado] = useState<string>("_top");
 
   const navigateParams = useCallback(
     (next: { mes?: number; ano?: number; modo?: Modo; vendedor?: string }) => {
@@ -502,6 +506,24 @@ export function ComercialDashboard({
     () => [...filteredClientesStatus].sort((a, b) => a.pctAtivacao - b.pctAtivacao),
     [filteredClientesStatus],
   );
+
+  // ----------------------------------------------------------- Indicador 5
+  const produtoChave = useCallback((p: { idProduto: number | null; descProduto: string }) =>
+    `${p.idProduto ?? "_"}|${p.descProduto}`, []);
+
+  const produtosTopChart = useMemo(() => {
+    if (produtosTop.produtos.length === 0) return [];
+    return produtosTop.meses.map((mes) => {
+      const [, mm] = mes.split("-");
+      const label = MESES_CURTOS[mm] ?? mes;
+      if (produtoSelecionado === "_top") {
+        const total = produtosTop.produtos.reduce((s, p) => s + (p.porMes[mes] ?? 0), 0);
+        return { mes: label, faturamento: total };
+      }
+      const prod = produtosTop.produtos.find((p) => produtoChave(p) === produtoSelecionado);
+      return { mes: label, faturamento: prod?.porMes[mes] ?? 0 };
+    });
+  }, [produtosTop, produtoSelecionado, produtoChave]);
 
   // --------------------------------------------------------- Evolução (line)
   const evolucaoChart = useMemo(
@@ -622,7 +644,9 @@ export function ComercialDashboard({
 
           <Select value={String(mes)} onValueChange={(v) => navigateParams({ mes: Number(v) })}>
             <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Mês" />
+              <SelectValue placeholder="Mês">
+                {(v) => MESES.find((m) => String(m.value) === String(v))?.label ?? "Mês"}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent align="end" alignItemWithTrigger={false}>
               {MESES.map((m) => (
@@ -635,7 +659,9 @@ export function ComercialDashboard({
 
           <Select value={String(ano)} onValueChange={(v) => navigateParams({ ano: Number(v) })}>
             <SelectTrigger className="w-[100px]">
-              <SelectValue placeholder="Ano" />
+              <SelectValue placeholder="Ano">
+                {(v) => v ?? "Ano"}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent align="end" alignItemWithTrigger={false}>
               {[ano - 1, ano].map((y) => (
@@ -651,7 +677,9 @@ export function ComercialDashboard({
             onValueChange={(v) => navigateParams({ vendedor: v ?? "todos" })}
           >
             <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Vendedor" />
+              <SelectValue placeholder="Vendedor">
+                {(v) => (v === "todos" || v == null ? "Todos os vendedores" : String(v))}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent align="end" alignItemWithTrigger={false}>
               <SelectItem value="todos">Todos os vendedores</SelectItem>
@@ -969,7 +997,9 @@ export function ComercialDashboard({
             </div>
             <Select value={faixaInatividade} onValueChange={(v) => setFaixaInatividade(v ?? "todas")}>
               <SelectTrigger className="w-[230px]">
-                <SelectValue placeholder="Faixa de inatividade" />
+                <SelectValue placeholder="Faixa de inatividade">
+                  {(v) => FAIXAS_INATIVIDADE.find((f) => f.value === v)?.label ?? "Faixa de inatividade"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent align="end" alignItemWithTrigger={false}>
                 {FAIXAS_INATIVIDADE.map((f) => (
@@ -1024,6 +1054,170 @@ export function ComercialDashboard({
               Mostrando 100 de {formatNumber(filteredClientesInativos.length)}. Exporte o CSV para a lista completa.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Indicador 5: Top Produtos por Faturamento */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="text-lg font-semibold">Top Produtos por Faturamento</CardTitle>
+              <CardDescription>
+                Top {produtosTop.produtos.length} produtos no período. Var. % compara com período anterior de mesmo tamanho.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Select value={produtoSelecionado} onValueChange={(v) => setProdutoSelecionado(v ?? "_top")}>
+                <SelectTrigger className="w-[260px]">
+                  <SelectValue>
+                    {(v) =>
+                      v === "_top" || v == null
+                        ? "Total dos top 20"
+                        : produtosTop.produtos.find((p) => produtoChave(p) === v)?.descProduto ?? String(v)
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_top">Total dos top 20</SelectItem>
+                  {produtosTop.produtos.map((p) => (
+                    <SelectItem key={produtoChave(p)} value={produtoChave(p)}>
+                      {p.descProduto}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={produtosTop.produtos.length === 0}
+                onClick={() =>
+                  exportToCsv(
+                    `top-produtos-${ano}-${mes}-${modo}`,
+                    produtosTop.produtos.map((p) => ({
+                      Produto: p.descProduto,
+                      "ID Produto": p.idProduto ?? "",
+                      ...Object.fromEntries(
+                        produtosTop.meses.map((m) => {
+                          const [, mm] = m.split("-");
+                          return [MESES_CURTOS[mm] ?? m, p.porMes[m] ?? 0];
+                        }),
+                      ),
+                      Total: p.totalFaturamento,
+                      Quantidade: p.totalQuantidade,
+                      "Var %": p.variacaoPct,
+                    })),
+                  )
+                }
+              >
+                <Download className="mr-1 size-3.5" /> CSV
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {produtosTopChart.length > 0 && (
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={produtosTopChart} margin={{ left: 20, right: 20, top: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                <XAxis
+                  dataKey="mes"
+                  tick={{ fontSize: 12, fill: "var(--color-muted-foreground)" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tickFormatter={(v: number) => formatBRL(v)}
+                  tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={100}
+                />
+                <Tooltip content={<ChartTooltipContent />} />
+                <Line
+                  type="monotone"
+                  dataKey="faturamento"
+                  stroke="var(--color-foreground)"
+                  strokeWidth={2}
+                  dot={{ r: 3, fill: "var(--color-foreground)" }}
+                  activeDot={{ r: 5 }}
+                  name="Faturamento"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+
+          <div className="overflow-x-auto rounded-lg border border-border/50">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+                    Produto
+                  </TableHead>
+                  {produtosTop.meses.map((m) => {
+                    const [, mm] = m.split("-");
+                    return (
+                      <TableHead
+                        key={m}
+                        className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium"
+                      >
+                        {MESES_CURTOS[mm] ?? m}
+                      </TableHead>
+                    );
+                  })}
+                  <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
+                    Total
+                  </TableHead>
+                  <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
+                    Var %
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {produtosTop.produtos.map((p) => (
+                  <TableRow key={produtoChave(p)} className="hover:bg-muted/50">
+                    <TableCell className="font-medium max-w-[280px] truncate" title={p.descProduto}>
+                      {p.descProduto}
+                    </TableCell>
+                    {produtosTop.meses.map((m) => (
+                      <TableCell key={m} className="text-right tabular-nums">
+                        {p.porMes[m] ? formatBRL(p.porMes[m]) : "—"}
+                      </TableCell>
+                    ))}
+                    <TableCell className="text-right tabular-nums font-medium">
+                      {formatBRL(p.totalFaturamento)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {p.variacaoPct !== null ? (
+                        <span
+                          className={
+                            p.variacaoPct >= 0
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-red-600 dark:text-red-400"
+                          }
+                        >
+                          {p.variacaoPct >= 0 ? "+" : ""}
+                          {formatPct(p.variacaoPct)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {produtosTop.produtos.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={produtosTop.meses.length + 3}
+                      className="h-16 text-center text-muted-foreground"
+                    >
+                      Sem itens sincronizados para o período
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 

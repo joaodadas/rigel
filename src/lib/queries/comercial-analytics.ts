@@ -1,6 +1,7 @@
 import { createSupabaseServer } from "@/lib/supabase/client";
 import { supabaseFetchAll } from "@/lib/supabase/fetch-all";
 import { cacheGetOrFetchSWR, CACHE_KEYS } from "@/lib/redis/client";
+import { getPgPool } from "@/lib/db/pg";
 import {
   METAS_VENDEDORES,
   getMetaMensal,
@@ -64,6 +65,20 @@ export interface ProdutoEvolucao {
   mes: string;
   faturamento: number;
   quantidade: number;
+}
+
+export interface ProdutoTopRow {
+  idProduto: number | null;
+  descProduto: string;
+  totalFaturamento: number;
+  totalQuantidade: number;
+  porMes: Record<string, number>; // mes (YYYY-MM) → faturamento
+  variacaoPct: number | null; // vs mesmo nº de meses anteriores ao período
+}
+
+export interface ProdutosTopEvolucao {
+  meses: string[]; // YYYY-MM dentro do período, em ordem
+  produtos: ProdutoTopRow[]; // top N por totalFaturamento desc
 }
 
 export interface TopCliente {
@@ -707,4 +722,133 @@ async function _fetchTopClientes(
     qtdPedidos: agg.count,
     ticketMedio: agg.count > 0 ? agg.total / agg.count : 0,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// 8. Indicador 5 — Top produtos por faturamento + evolução mensal
+// ---------------------------------------------------------------------------
+
+export async function getProdutosTopEvolucao(
+  mesInicio: number,
+  mesFim: number,
+  ano: number,
+  vendedor?: string | null,
+  topN: number = 20,
+): Promise<ProdutosTopEvolucao> {
+  return cacheGetOrFetchSWR(
+    CACHE_KEYS.biProdutosTop(mesInicio, mesFim, ano, topN, vendedor || undefined),
+    () => _fetchProdutosTopEvolucao(mesInicio, mesFim, ano, vendedor, topN),
+  );
+}
+
+async function _fetchProdutosTopEvolucao(
+  mesInicio: number,
+  mesFim: number,
+  ano: number,
+  vendedor: string | null | undefined,
+  topN: number,
+): Promise<ProdutosTopEvolucao> {
+  const pool = getPgPool();
+
+  const currStart = new Date(ano, mesInicio - 1, 1);
+  const currEnd = new Date(ano, mesFim, 0); // último dia do mesFim
+  const lengthMonths = mesFim - mesInicio + 1;
+  const prevStart = new Date(currStart);
+  prevStart.setMonth(prevStart.getMonth() - lengthMonths);
+
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  const marketplaceArray = Array.from(MARKETPLACE_VENDEDOR_IDS).map(String);
+
+  const { rows } = await pool.query<{
+    id_produto: string | null;
+    desc_produto: string;
+    mes: string;
+    bucket: "curr" | "prev";
+    vendedor_pedido_id: string | null;
+    vendedor_pedido: string | null;
+    faturamento: number;
+    quantidade: number;
+  }>(
+    `SELECT
+       pi.id_produto::text AS id_produto,
+       COALESCE(NULLIF(TRIM(pi.desc_produto), ''), '(sem descrição)') AS desc_produto,
+       SUBSTR(p.data_pedido::text, 1, 7) AS mes,
+       CASE WHEN p.data_pedido >= $1 AND p.data_pedido <= $2 THEN 'curr' ELSE 'prev' END AS bucket,
+       p.vendedor_pedido_id::text AS vendedor_pedido_id,
+       p.vendedor_pedido,
+       SUM(pi.valor_total_produto)::float8 AS faturamento,
+       SUM(pi.qtde_produto)::float8 AS quantidade
+     FROM pedido_itens pi
+     JOIN pedidos p ON p.id_pedido = pi.id_pedido
+     WHERE p.status_pedido = 'Atendido'
+       AND p.lixeira = 'Nao'
+       AND (p.vendedor_pedido_id IS NULL OR p.vendedor_pedido_id::text <> ALL($4::text[]))
+       AND p.data_pedido >= $3
+       AND p.data_pedido <= $2
+     GROUP BY pi.id_produto, desc_produto, mes, bucket, p.vendedor_pedido_id, p.vendedor_pedido`,
+    [fmt(currStart), fmt(currEnd), fmt(prevStart), marketplaceArray],
+  );
+
+  // Lista de meses do período (sempre presente na tabela mesmo quando sem dados).
+  const meses: string[] = [];
+  for (let m = mesInicio; m <= mesFim; m++) {
+    meses.push(`${ano}-${String(m).padStart(2, "0")}`);
+  }
+
+  type ProdAgg = {
+    idProduto: number | null;
+    descProduto: string;
+    porMes: Record<string, number>;
+    totalCurr: number;
+    totalCurrQtd: number;
+    totalPrev: number;
+  };
+  const map = new Map<string, ProdAgg>();
+
+  for (const r of rows) {
+    const canonical = resolveVendedor(r.vendedor_pedido_id, r.vendedor_pedido);
+    if (!canonical) continue;
+    if (vendedor && canonical !== vendedor) continue;
+
+    const idProd = r.id_produto != null ? Number(r.id_produto) : null;
+    const key = `${idProd ?? "_"}|${r.desc_produto}`;
+    let agg = map.get(key);
+    if (!agg) {
+      agg = {
+        idProduto: idProd,
+        descProduto: r.desc_produto,
+        porMes: {},
+        totalCurr: 0,
+        totalCurrQtd: 0,
+        totalPrev: 0,
+      };
+      map.set(key, agg);
+    }
+
+    const fat = Number(r.faturamento) || 0;
+    const qtd = Number(r.quantidade) || 0;
+
+    if (r.bucket === "curr") {
+      agg.totalCurr += fat;
+      agg.totalCurrQtd += qtd;
+      agg.porMes[r.mes] = (agg.porMes[r.mes] ?? 0) + fat;
+    } else {
+      agg.totalPrev += fat;
+    }
+  }
+
+  const produtos: ProdutoTopRow[] = Array.from(map.values())
+    .filter((a) => a.totalCurr > 0)
+    .sort((a, b) => b.totalCurr - a.totalCurr)
+    .slice(0, topN)
+    .map((a) => ({
+      idProduto: a.idProduto,
+      descProduto: a.descProduto,
+      totalFaturamento: a.totalCurr,
+      totalQuantidade: a.totalCurrQtd,
+      porMes: a.porMes,
+      variacaoPct: a.totalPrev > 0 ? ((a.totalCurr - a.totalPrev) / a.totalPrev) * 100 : null,
+    }));
+
+  return { meses, produtos };
 }
