@@ -58,6 +58,8 @@ export interface ClienteInativo {
   ultimoPedido: string | null;
   valorUltimoPedido: number;
   diasSemCompra: number;
+  cidade: string;
+  uf: string;
 }
 
 export interface ProdutoEvolucao {
@@ -571,19 +573,25 @@ async function _fetchClientesInativos(): Promise<ClienteInativo[]> {
       id_cliente: string;
       razao_cliente: string;
       fantasia_cliente: string;
+      cidade_cliente: string | null;
+      uf_cliente: string | null;
     }>((from, to) =>
       supabase
         .from("clientes")
-        .select("id_cliente, razao_cliente, fantasia_cliente")
+        .select("id_cliente, razao_cliente, fantasia_cliente, cidade_cliente, uf_cliente")
         .eq("lixeira", "Nao")
         .range(from, to),
     ),
   ]);
 
-  const clienteMap: Record<string, string> = {};
+  const clienteMap: Record<string, { nome: string; cidade: string; uf: string }> = {};
   for (const c of clientes) {
     if (!c.id_cliente) continue;
-    clienteMap[String(c.id_cliente)] = String(c.fantasia_cliente || c.razao_cliente || "(sem nome)");
+    clienteMap[String(c.id_cliente)] = {
+      nome: String(c.fantasia_cliente || c.razao_cliente || "(sem nome)"),
+      cidade: String(c.cidade_cliente || ""),
+      uf: String(c.uf_cliente || ""),
+    };
   }
 
   type Row = { vendedor: string; data: string; valor: number };
@@ -605,12 +613,15 @@ async function _fetchClientesInativos(): Promise<ClienteInativo[]> {
     const dias = Math.floor(
       (now.getTime() - new Date(info.data + "T00:00:00Z").getTime()) / 86400000,
     );
+    const meta = clienteMap[id];
     result.push({
-      nome: clienteMap[id] ?? `(cliente ${id})`,
+      nome: meta?.nome ?? `(cliente ${id})`,
       vendedor: info.vendedor,
       ultimoPedido: info.data,
       valorUltimoPedido: info.valor,
       diasSemCompra: dias,
+      cidade: meta?.cidade ?? "",
+      uf: meta?.uf ?? "",
     });
   }
   return result.sort((a, b) => b.diasSemCompra - a.diasSemCompra);

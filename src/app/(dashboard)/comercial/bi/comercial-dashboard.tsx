@@ -39,7 +39,10 @@ import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -452,6 +455,22 @@ export function ComercialDashboard({
     return Array.from(names).sort();
   }, [pedidosVendedor, clientesStatus]);
 
+  // Vendedores agrupados por tipo (Vendas Internas / Representantes / Outros)
+  const vendedoresGrouped = useMemo(() => {
+    const tipoMap = new Map<string, "vendas_internas" | "representante" | "outros">();
+    pedidosVendedor.forEach((p) => tipoMap.set(p.vendedor, p.tipo));
+    const internas: string[] = [];
+    const representantes: string[] = [];
+    const outros: string[] = [];
+    for (const v of vendedores) {
+      const tipo = tipoMap.get(v) ?? "outros";
+      if (tipo === "vendas_internas") internas.push(v);
+      else if (tipo === "representante") representantes.push(v);
+      else outros.push(v);
+    }
+    return { internas, representantes, outros };
+  }, [vendedores, pedidosVendedor]);
+
   // -------------------------------------------------- Indicador 6 (demo)
   const mesInicio = modo === "mes" ? mes : 1;
 
@@ -766,11 +785,45 @@ export function ComercialDashboard({
             </SelectTrigger>
             <SelectContent align="end" alignItemWithTrigger={false}>
               <SelectItem value="todos">Todos os vendedores</SelectItem>
-              {vendedores.map((v) => (
-                <SelectItem key={v} value={v}>
-                  {v}
-                </SelectItem>
-              ))}
+              {vendedoresGrouped.internas.length > 0 && (
+                <>
+                  <SelectSeparator />
+                  <SelectGroup>
+                    <SelectLabel>Vendas Internas</SelectLabel>
+                    {vendedoresGrouped.internas.map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {v}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </>
+              )}
+              {vendedoresGrouped.representantes.length > 0 && (
+                <>
+                  <SelectSeparator />
+                  <SelectGroup>
+                    <SelectLabel>Representantes</SelectLabel>
+                    {vendedoresGrouped.representantes.map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {v}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </>
+              )}
+              {vendedoresGrouped.outros.length > 0 && (
+                <>
+                  <SelectSeparator />
+                  <SelectGroup>
+                    <SelectLabel>Outros</SelectLabel>
+                    {vendedoresGrouped.outros.map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {v}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </>
+              )}
             </SelectContent>
           </Select>
         </div>
@@ -937,16 +990,18 @@ export function ComercialDashboard({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() =>
+              onClick={() => {
+                const totalGeral = pedidosRegiao.reduce((s, p) => s + p.valorTotal, 0);
                 exportToCsv(
                   `pedidos-regiao-${mes}-${ano}-${modo}`,
                   pedidosRegiao.map((p) => ({
                     UF: p.uf,
                     "Valor Total": p.valorTotal,
                     "Qtd Pedidos": p.qtdPedidos,
+                    "% do Total": totalGeral > 0 ? (p.valorTotal / totalGeral) * 100 : 0,
                   })),
-                )
-              }
+                );
+              }}
             >
               <Download className="mr-1 size-3.5" /> CSV
             </Button>
@@ -961,20 +1016,28 @@ export function ComercialDashboard({
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="text-xs uppercase tracking-wider text-muted-foreground font-medium">UF</TableHead>
                     <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">Valor Total</TableHead>
-                    <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">Qtd Pedidos</TableHead>
+                    <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">Qtd</TableHead>
+                    <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">% do Total</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {pedidosRegiao.map((p) => (
-                    <TableRow key={p.uf} className="hover:bg-muted/50">
-                      <TableCell className="font-medium">{p.uf}</TableCell>
-                      <TableCell className="text-right tabular-nums">{formatBRL(p.valorTotal)}</TableCell>
-                      <TableCell className="text-right tabular-nums">{formatNumber(p.qtdPedidos)}</TableCell>
-                    </TableRow>
-                  ))}
+                  {(() => {
+                    const totalGeral = pedidosRegiao.reduce((s, p) => s + p.valorTotal, 0);
+                    return pedidosRegiao.map((p) => {
+                      const pct = totalGeral > 0 ? (p.valorTotal / totalGeral) * 100 : 0;
+                      return (
+                        <TableRow key={p.uf} className="hover:bg-muted/50">
+                          <TableCell className="font-medium">{p.uf}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatBRL(p.valorTotal)}</TableCell>
+                          <TableCell className="text-right tabular-nums">{formatNumber(p.qtdPedidos)}</TableCell>
+                          <TableCell className="text-right tabular-nums text-muted-foreground">{formatPct(pct)}</TableCell>
+                        </TableRow>
+                      );
+                    });
+                  })()}
                   {pedidosRegiao.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={3} className="h-16 text-center text-muted-foreground">
+                      <TableCell colSpan={4} className="h-16 text-center text-muted-foreground">
                         Nenhum dado disponível
                       </TableCell>
                     </TableRow>
@@ -1076,6 +1139,8 @@ export function ComercialDashboard({
                   filteredClientesInativos.map((c) => ({
                     Cliente: c.nome,
                     Vendedor: c.vendedor,
+                    Cidade: c.cidade,
+                    UF: c.uf,
                     "Ultimo Pedido": c.ultimoPedido ?? "Nunca",
                     "Valor Ultimo Pedido": c.valorUltimoPedido,
                     "Dias sem Compra": c.diasSemCompra,
@@ -1124,6 +1189,7 @@ export function ComercialDashboard({
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Cliente</TableHead>
                   <TableHead className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Vendedor</TableHead>
+                  <TableHead className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Cidade/UF</TableHead>
                   <TableHead className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Último Pedido</TableHead>
                   <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">Valor</TableHead>
                   <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">Dias sem Compra</TableHead>
@@ -1134,6 +1200,9 @@ export function ComercialDashboard({
                   <TableRow key={`${c.nome}-${i}`} className="hover:bg-muted/50">
                     <TableCell className="max-w-[260px] truncate font-medium">{c.nome}</TableCell>
                     <TableCell className="text-muted-foreground">{c.vendedor}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">
+                      {c.cidade && c.uf ? `${c.cidade}/${c.uf}` : c.uf || c.cidade || "—"}
+                    </TableCell>
                     <TableCell className="tabular-nums text-muted-foreground">{c.ultimoPedido ?? "Nunca"}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatBRL(c.valorUltimoPedido)}</TableCell>
                     <TableCell className="text-right tabular-nums">
@@ -1145,7 +1214,7 @@ export function ComercialDashboard({
                 ))}
                 {filteredClientesInativos.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} className="h-16 text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="h-16 text-center text-muted-foreground">
                       Nenhum cliente nos filtros atuais
                     </TableCell>
                   </TableRow>
