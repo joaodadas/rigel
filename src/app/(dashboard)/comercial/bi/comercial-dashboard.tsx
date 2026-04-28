@@ -989,11 +989,32 @@ export function ComercialDashboard({
       {/* Indicador 3: Base Ativa por Vendedor (cards) */}
       <Card>
         <CardHeader>
-          <div>
-            <CardTitle className="text-lg font-semibold">Base Ativa por Vendedor</CardTitle>
-            <CardDescription>
-              Clientes B2B classificados como ativos (compra ≤ 6 meses) vs. inativos. Ordenados por % ativação ascendente.
-            </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg font-semibold">Base Ativa por Vendedor</CardTitle>
+              <CardDescription>
+                Clientes B2B classificados como ativos (compra ≤ 6 meses) vs. inativos. Ordenados por % ativação ascendente.
+              </CardDescription>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={sortedClientesStatus.length === 0}
+              onClick={() =>
+                exportToCsv(
+                  `base-ativa-vendedor`,
+                  sortedClientesStatus.map((row) => ({
+                    Vendedor: row.vendedor,
+                    Total: row.total,
+                    Ativos: row.ativos,
+                    Inativos: row.inativos,
+                    "% Ativação": row.pctAtivacao,
+                  })),
+                )
+              }
+            >
+              <Download className="mr-1 size-3.5" /> CSV
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -1501,8 +1522,29 @@ export function ComercialDashboard({
       {/* Evolução do Faturamento */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Evolução do Faturamento B2B</CardTitle>
-          <CardDescription>Faturamento mensal dos últimos 6 meses</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg font-semibold">Evolução do Faturamento B2B</CardTitle>
+              <CardDescription>Faturamento mensal dos últimos 6 meses</CardDescription>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={evolucaoTable.length === 0}
+              onClick={() =>
+                exportToCsv(
+                  `evolucao-faturamento`,
+                  evolucaoTable.map((e) => ({
+                    Mês: e.mesFull,
+                    Faturamento: e.faturamento,
+                    "Variação %": e.variacao,
+                  })),
+                )
+              }
+            >
+              <Download className="mr-1 size-3.5" /> CSV
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {evolucaoChart.length > 0 && (
