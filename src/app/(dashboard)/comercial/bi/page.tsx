@@ -7,38 +7,60 @@ import {
   getClientesAtivosVendedor,
   getClientesInativos,
   getProdutosEvolucao,
+  getProdutosTopEvolucao,
+  getTopClientes,
+  getClientesB2BList,
 } from "@/lib/queries/comercial-analytics";
 import { ComercialDashboard } from "./comercial-dashboard";
 
 interface PageProps {
-  searchParams: Promise<{ mes?: string; ano?: string }>;
+  searchParams: Promise<{
+    mes?: string;
+    ano?: string;
+    modo?: string;
+    vendedor?: string;
+  }>;
 }
 
 export default async function ComercialBIPage({ searchParams }: PageProps) {
   const session = await getSession();
-
-  if (!session) {
-    redirect("/login");
-  }
+  if (!session) redirect("/login");
 
   const params = await searchParams;
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
 
-  // Use URL params or default to current month/year
   const mes = params.mes ? Math.min(12, Math.max(1, Number(params.mes))) : currentMonth;
   const ano = params.ano ? Number(params.ano) : currentYear;
+  const modo: "mes" | "acumulado" = params.modo === "mes" ? "mes" : "acumulado";
+  const vendedor = params.vendedor && params.vendedor !== "todos" ? params.vendedor : null;
 
-  const [kpis, pedidosVendedor, pedidosRegiao, clientesStatus, clientesInativos, evolucao] =
-    await Promise.all([
-      getComercialKPIs(1, mes, ano),
-      getPedidosPorVendedor(1, mes, ano),
-      getPedidosPorRegiao(1, mes, ano),
-      getClientesAtivosVendedor(),
-      getClientesInativos(),
-      getProdutosEvolucao(6),
-    ]);
+  const mesInicio = modo === "mes" ? mes : 1;
+
+  const [
+    kpis,
+    pedidosVendedor,
+    pedidosRegiao,
+    clientesStatus,
+    clientesInativos,
+    evolucao,
+    produtosTop,
+    topGeral,
+    topInternas,
+    clientesB2B,
+  ] = await Promise.all([
+    getComercialKPIs(mesInicio, mes, ano, vendedor),
+    getPedidosPorVendedor(mesInicio, mes, ano, vendedor),
+    getPedidosPorRegiao(mesInicio, mes, ano, vendedor),
+    getClientesAtivosVendedor(),
+    getClientesInativos(),
+    getProdutosEvolucao(6, vendedor),
+    getProdutosTopEvolucao(mesInicio, mes, ano, vendedor, 20),
+    getTopClientes(mesInicio, mes, ano, "geral", 20, vendedor),
+    getTopClientes(mesInicio, mes, ano, "vendas_internas", 20, vendedor),
+    getClientesB2BList(),
+  ]);
 
   return (
     <ComercialDashboard
@@ -48,8 +70,14 @@ export default async function ComercialBIPage({ searchParams }: PageProps) {
       clientesStatus={clientesStatus}
       clientesInativos={clientesInativos}
       evolucao={evolucao}
+      produtosTop={produtosTop}
+      topGeral={topGeral}
+      topInternas={topInternas}
+      clientesB2B={clientesB2B}
       defaultMes={mes}
       defaultAno={ano}
+      defaultModo={modo}
+      defaultVendedor={vendedor}
     />
   );
 }

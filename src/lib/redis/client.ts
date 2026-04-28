@@ -107,12 +107,13 @@ export const CACHE_KEYS = {
   // KPI / dashboard
   kpiAdmin: "kpi:admin",
 
-  // BI analytics (dynamic: mesInicio, mesFim, ano)
-  biKpis: (mi: number, mf: number, a: number) => `bi:kpis:${mi}:${mf}:${a}`,
-  biVendedor: (mi: number, mf: number, a: number) =>
-    `bi:vendedor:${mi}:${mf}:${a}`,
-  biRegiao: (mi: number, mf: number, a: number) =>
-    `bi:regiao:${mi}:${mf}:${a}`,
+  // BI analytics (dynamic: mesInicio, mesFim, ano, vendedor opcional)
+  biKpis: (mi: number, mf: number, a: number, v?: string) =>
+    `bi:kpis:${mi}:${mf}:${a}:${v || "_all"}`,
+  biVendedor: (mi: number, mf: number, a: number, v?: string) =>
+    `bi:vendedor:${mi}:${mf}:${a}:${v || "_all"}`,
+  biRegiao: (mi: number, mf: number, a: number, v?: string) =>
+    `bi:regiao:${mi}:${mf}:${a}:${v || "_all"}`,
 
   // BI static
   biClientesStatus: "bi:clientes-status",
@@ -120,6 +121,15 @@ export const CACHE_KEYS = {
 
   // BI evolucao (dynamic: meses)
   biEvolucao: (meses: number) => `bi:evolucao:${meses}`,
+
+  // BI top produtos (dynamic: mesInicio, mesFim, ano, topN, vendedor opcional)
+  biProdutosTop: (mi: number, mf: number, a: number, n: number, v?: string) =>
+    `bi:produtos-top:${mi}:${mf}:${a}:${n}:${v || "_all"}`,
+
+  // BI demonstrativo por cliente
+  biClientesB2BList: "bi:clientes-b2b-list",
+  biDemoCliente: (id: string, mi: number, mf: number, a: number) =>
+    `bi:demo-cliente:${id}:${mi}:${mf}:${a}`,
 
   // Listing queries (entity, page, pageSize, search)
   list: (entity: string, page: number, size: number, search?: string) =>
@@ -154,6 +164,7 @@ export async function invalidateAllCaches(): Promise<void> {
   keys.push(CACHE_KEYS.kpiAdmin);
   keys.push(CACHE_KEYS.biClientesStatus);
   keys.push(CACHE_KEYS.biClientesInativos);
+  keys.push(CACHE_KEYS.biClientesB2BList);
 
   // Dynamic BI keys for current year (months 1 through current)
   const now = new Date();
@@ -165,6 +176,7 @@ export async function invalidateAllCaches(): Promise<void> {
       keys.push(CACHE_KEYS.biKpis(mi, mf, currentYear));
       keys.push(CACHE_KEYS.biVendedor(mi, mf, currentYear));
       keys.push(CACHE_KEYS.biRegiao(mi, mf, currentYear));
+      keys.push(CACHE_KEYS.biProdutosTop(mi, mf, currentYear, 20));
     }
   }
 
