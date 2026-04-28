@@ -126,6 +126,11 @@ export const CACHE_KEYS = {
   biProdutosTop: (mi: number, mf: number, a: number, n: number, v?: string) =>
     `bi:produtos-top:${mi}:${mf}:${a}:${n}:${v || "_all"}`,
 
+  // BI demonstrativo por cliente
+  biClientesB2BList: "bi:clientes-b2b-list",
+  biDemoCliente: (id: string, mi: number, mf: number, a: number) =>
+    `bi:demo-cliente:${id}:${mi}:${mf}:${a}`,
+
   // Listing queries (entity, page, pageSize, search)
   list: (entity: string, page: number, size: number, search?: string) =>
     `list:${entity}:p${page}:s${size}:${search || "_"}`,
@@ -159,6 +164,7 @@ export async function invalidateAllCaches(): Promise<void> {
   keys.push(CACHE_KEYS.kpiAdmin);
   keys.push(CACHE_KEYS.biClientesStatus);
   keys.push(CACHE_KEYS.biClientesInativos);
+  keys.push(CACHE_KEYS.biClientesB2BList);
 
   // Dynamic BI keys for current year (months 1 through current)
   const now = new Date();

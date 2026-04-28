@@ -9,6 +9,7 @@ import {
   getProdutosEvolucao,
   getProdutosTopEvolucao,
   getTopClientes,
+  getClientesB2BList,
 } from "@/lib/queries/comercial-analytics";
 import { ComercialDashboard } from "../../comercial/bi/comercial-dashboard";
 
@@ -46,6 +47,7 @@ export default async function AdminBIPage({ searchParams }: PageProps) {
     produtosTop,
     topGeral,
     topInternas,
+    clientesB2B,
   ] = await Promise.all([
     getComercialKPIs(mesInicio, mes, ano, vendedor),
     getPedidosPorVendedor(mesInicio, mes, ano, vendedor),
@@ -56,6 +58,7 @@ export default async function AdminBIPage({ searchParams }: PageProps) {
     getProdutosTopEvolucao(mesInicio, mes, ano, vendedor, 20),
     getTopClientes(mesInicio, mes, ano, "geral", 20, vendedor),
     getTopClientes(mesInicio, mes, ano, "vendas_internas", 20, vendedor),
+    getClientesB2BList(),
   ]);
 
   return (
@@ -69,6 +72,7 @@ export default async function AdminBIPage({ searchParams }: PageProps) {
       produtosTop={produtosTop}
       topGeral={topGeral}
       topInternas={topInternas}
+      clientesB2B={clientesB2B}
       defaultMes={mes}
       defaultAno={ano}
       defaultModo={modo}

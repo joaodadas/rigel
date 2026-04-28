@@ -81,6 +81,28 @@ export interface ProdutosTopEvolucao {
   produtos: ProdutoTopRow[]; // top N por totalFaturamento desc
 }
 
+export interface ClienteB2BListItem {
+  idCliente: string;
+  nome: string;
+  uf: string;
+}
+
+export interface DemonstrativoProduto {
+  idProduto: number | null;
+  descProduto: string;
+  porMes: Record<string, number>; // YYYY-MM → faturamento
+  porMesQtd: Record<string, number>;
+  total: number;
+  totalQtd: number;
+}
+
+export interface DemonstrativoCliente {
+  meses: string[];
+  produtos: DemonstrativoProduto[];
+  totaisMensais: Record<string, number>; // soma por mes
+  totalGeral: number;
+}
+
 export interface TopCliente {
   posicao: number;
   cliente: string;
@@ -852,3 +874,125 @@ async function _fetchProdutosTopEvolucao(
 
   return { meses, produtos };
 }
+
+// ---------------------------------------------------------------------------
+// 9. Indicador 6 — Demonstrativo por cliente (pivot meses × produtos)
+// ---------------------------------------------------------------------------
+
+/** Lista de clientes B2B (com pelo menos um pedido Atendido fora de marketplace). */
+export async function getClientesB2BList(): Promise<ClienteB2BListItem[]> {
+  return cacheGetOrFetchSWR(CACHE_KEYS.biClientesB2BList, _fetchClientesB2BList);
+}
+
+async function _fetchClientesB2BList(): Promise<ClienteB2BListItem[]> {
+  const pool = getPgPool();
+  const marketplaceArray = Array.from(MARKETPLACE_VENDEDOR_IDS).map(String);
+
+  const { rows } = await pool.query<{
+    id_cliente: string;
+    nome: string;
+    uf: string;
+  }>(
+    `SELECT
+       c.id_cliente::text AS id_cliente,
+       COALESCE(NULLIF(TRIM(c.fantasia_cliente), ''), NULLIF(TRIM(c.razao_cliente), ''), '(sem nome)') AS nome,
+       COALESCE(c.uf_cliente, '') AS uf
+     FROM clientes c
+     WHERE EXISTS (
+       SELECT 1 FROM pedidos p
+       WHERE p.id_cliente = c.id_cliente
+         AND p.status_pedido = 'Atendido'
+         AND p.lixeira = 'Nao'
+         AND (p.vendedor_pedido_id IS NULL OR p.vendedor_pedido_id::text <> ALL($1::text[]))
+     )
+     ORDER BY nome`,
+    [marketplaceArray],
+  );
+
+  return rows.map((r) => ({ idCliente: r.id_cliente, nome: r.nome, uf: r.uf }));
+}
+
+export async function getDemonstrativoCliente(
+  idCliente: string,
+  mesInicio: number,
+  mesFim: number,
+  ano: number,
+): Promise<DemonstrativoCliente> {
+  return cacheGetOrFetchSWR(
+    CACHE_KEYS.biDemoCliente(idCliente, mesInicio, mesFim, ano),
+    () => _fetchDemonstrativoCliente(idCliente, mesInicio, mesFim, ano),
+  );
+}
+
+async function _fetchDemonstrativoCliente(
+  idCliente: string,
+  mesInicio: number,
+  mesFim: number,
+  ano: number,
+): Promise<DemonstrativoCliente> {
+  const pool = getPgPool();
+  const { start, end } = buildDateRange(mesInicio, mesFim, ano);
+
+  const { rows } = await pool.query<{
+    id_produto: string | null;
+    desc_produto: string;
+    mes: string;
+    faturamento: number;
+    quantidade: number;
+  }>(
+    `SELECT
+       pi.id_produto::text AS id_produto,
+       COALESCE(NULLIF(TRIM(pi.desc_produto), ''), '(sem descrição)') AS desc_produto,
+       SUBSTR(p.data_pedido::text, 1, 7) AS mes,
+       SUM(pi.valor_total_produto)::float8 AS faturamento,
+       SUM(pi.qtde_produto)::float8 AS quantidade
+     FROM pedido_itens pi
+     JOIN pedidos p ON p.id_pedido = pi.id_pedido
+     WHERE p.id_cliente::text = $1
+       AND p.status_pedido = 'Atendido'
+       AND p.lixeira = 'Nao'
+       AND p.data_pedido >= $2
+       AND p.data_pedido <= $3
+     GROUP BY pi.id_produto, desc_produto, mes`,
+    [idCliente, start, end],
+  );
+
+  const meses: string[] = [];
+  for (let m = mesInicio; m <= mesFim; m++) {
+    meses.push(`${ano}-${String(m).padStart(2, "0")}`);
+  }
+
+  const map = new Map<string, DemonstrativoProduto>();
+  const totaisMensais: Record<string, number> = {};
+  let totalGeral = 0;
+
+  for (const r of rows) {
+    const idProd = r.id_produto != null ? Number(r.id_produto) : null;
+    const key = `${idProd ?? "_"}|${r.desc_produto}`;
+    let prod = map.get(key);
+    if (!prod) {
+      prod = {
+        idProduto: idProd,
+        descProduto: r.desc_produto,
+        porMes: {},
+        porMesQtd: {},
+        total: 0,
+        totalQtd: 0,
+      };
+      map.set(key, prod);
+    }
+    const fat = Number(r.faturamento) || 0;
+    const qtd = Number(r.quantidade) || 0;
+    prod.porMes[r.mes] = (prod.porMes[r.mes] ?? 0) + fat;
+    prod.porMesQtd[r.mes] = (prod.porMesQtd[r.mes] ?? 0) + qtd;
+    prod.total += fat;
+    prod.totalQtd += qtd;
+    totaisMensais[r.mes] = (totaisMensais[r.mes] ?? 0) + fat;
+    totalGeral += fat;
+  }
+
+  const produtos = Array.from(map.values()).sort((a, b) => b.total - a.total);
+
+  return { meses, produtos, totaisMensais, totalGeral };
+}
+

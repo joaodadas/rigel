@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   BarChart,
@@ -68,6 +69,8 @@ import type {
   ProdutoEvolucao,
   ProdutosTopEvolucao,
   TopCliente,
+  ClienteB2BListItem,
+  DemonstrativoCliente,
 } from "@/lib/queries/comercial-analytics";
 
 // ---------------------------------------------------------------------------
@@ -86,6 +89,7 @@ interface ComercialDashboardProps {
   produtosTop: ProdutosTopEvolucao;
   topGeral: TopCliente[];
   topInternas: TopCliente[];
+  clientesB2B: ClienteB2BListItem[];
   defaultMes: number;
   defaultAno: number;
   defaultModo: Modo;
@@ -398,6 +402,7 @@ export function ComercialDashboard({
   produtosTop,
   topGeral,
   topInternas,
+  clientesB2B,
   defaultMes,
   defaultAno,
   defaultModo,
@@ -413,6 +418,15 @@ export function ComercialDashboard({
   const [buscaInativo, setBuscaInativo] = useState("");
   const [topTab, setTopTab] = useState<"geral" | "internas">("geral");
   const [produtoSelecionado, setProdutoSelecionado] = useState<string>("_top");
+  const [demoClienteId, setDemoClienteId] = useState<string | null>(null);
+  const [demoData, setDemoData] = useState<DemonstrativoCliente | null>(null);
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [demoError, setDemoError] = useState<string | null>(null);
+  const [demoSearch, setDemoSearch] = useState("");
+  const [demoSearchOpen, setDemoSearchOpen] = useState(false);
+  const [demoDropPos, setDemoDropPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const demoSearchRef = useRef<HTMLDivElement | null>(null);
+  const demoDropdownRef = useRef<HTMLDivElement | null>(null);
 
   const navigateParams = useCallback(
     (next: { mes?: number; ano?: number; modo?: Modo; vendedor?: string }) => {
@@ -437,6 +451,75 @@ export function ComercialDashboard({
     clientesStatus.forEach((c) => names.add(c.vendedor));
     return Array.from(names).sort();
   }, [pedidosVendedor, clientesStatus]);
+
+  // -------------------------------------------------- Indicador 6 (demo)
+  const mesInicio = modo === "mes" ? mes : 1;
+
+  useEffect(() => {
+    if (!demoClienteId) {
+      setDemoData(null);
+      setDemoError(null);
+      return;
+    }
+    const ctrl = new AbortController();
+    setDemoLoading(true);
+    setDemoError(null);
+    const url = `/api/bi/demonstrativo-cliente?idCliente=${encodeURIComponent(demoClienteId)}&mesInicio=${mesInicio}&mesFim=${mes}&ano=${ano}`;
+    fetch(url, { signal: ctrl.signal })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return (await r.json()) as DemonstrativoCliente;
+      })
+      .then((d) => setDemoData(d))
+      .catch((e) => {
+        if (e.name !== "AbortError") setDemoError(String(e));
+      })
+      .finally(() => setDemoLoading(false));
+    return () => ctrl.abort();
+  }, [demoClienteId, mesInicio, mes, ano]);
+
+  // Calcula posição do dropdown (renderizado em portal pra escapar de stacking)
+  const updateDemoDropPos = useCallback(() => {
+    if (!demoSearchRef.current) return;
+    const rect = demoSearchRef.current.getBoundingClientRect();
+    setDemoDropPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+  }, []);
+
+  useEffect(() => {
+    if (!demoSearchOpen) return;
+    updateDemoDropPos();
+    const opts = { passive: true } as const;
+    window.addEventListener("scroll", updateDemoDropPos, true);
+    window.addEventListener("resize", updateDemoDropPos, opts);
+    return () => {
+      window.removeEventListener("scroll", updateDemoDropPos, true);
+      window.removeEventListener("resize", updateDemoDropPos);
+    };
+  }, [demoSearchOpen, updateDemoDropPos]);
+
+  // Fechar ao clicar fora (input + portal)
+  useEffect(() => {
+    if (!demoSearchOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (demoSearchRef.current?.contains(target)) return;
+      if (demoDropdownRef.current?.contains(target)) return;
+      setDemoSearchOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [demoSearchOpen]);
+
+  const demoFilteredClientes = useMemo(() => {
+    const q = demoSearch.trim().toLowerCase();
+    if (!q) return clientesB2B.slice(0, 50);
+    return clientesB2B.filter((c) => c.nome.toLowerCase().includes(q)).slice(0, 50);
+  }, [clientesB2B, demoSearch]);
+
+  const demoSelectedCliente = useMemo(
+    () => clientesB2B.find((c) => c.idCliente === demoClienteId) ?? null,
+    [clientesB2B, demoClienteId],
+  );
 
   // ------------------------------------------------------------- Indicador 1
   const filteredPedidosVendedor = useMemo(
@@ -1218,6 +1301,200 @@ export function ComercialDashboard({
               </TableBody>
             </Table>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Indicador 6: Demonstrativo por Cliente */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="text-lg font-semibold">Demonstrativo por Cliente</CardTitle>
+              <CardDescription>
+                Pivot meses × produtos para um cliente. {clientesB2B.length} clientes B2B disponíveis.
+              </CardDescription>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!demoData || demoData.produtos.length === 0}
+              onClick={() => {
+                if (!demoData || !demoSelectedCliente) return;
+                exportToCsv(
+                  `demo-${demoSelectedCliente.nome.replace(/[^a-z0-9]/gi, "_")}-${ano}-${mes}-${modo}`,
+                  demoData.produtos.map((p) => ({
+                    Produto: p.descProduto,
+                    "ID Produto": p.idProduto ?? "",
+                    ...Object.fromEntries(
+                      demoData.meses.map((m) => {
+                        const [, mm] = m.split("-");
+                        return [MESES_CURTOS[mm] ?? m, p.porMes[m] ?? 0];
+                      }),
+                    ),
+                    Total: p.total,
+                    Quantidade: p.totalQtd,
+                  })),
+                );
+              }}
+            >
+              <Download className="mr-1 size-3.5" /> CSV
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Seletor de cliente com busca */}
+          <div ref={demoSearchRef} className="relative w-full max-w-md">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="pl-8"
+                  placeholder="Buscar cliente…"
+                  value={demoSearchOpen ? demoSearch : demoSelectedCliente?.nome ?? ""}
+                  onFocus={() => {
+                    setDemoSearch("");
+                    setDemoSearchOpen(true);
+                  }}
+                  onChange={(e) => setDemoSearch(e.target.value)}
+                />
+              </div>
+              {demoClienteId && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setDemoClienteId(null);
+                    setDemoSearch("");
+                  }}
+                >
+                  Limpar
+                </Button>
+              )}
+            </div>
+          </div>
+          {demoSearchOpen &&
+            demoDropPos &&
+            typeof document !== "undefined" &&
+            createPortal(
+              <div
+                ref={demoDropdownRef}
+                className="rounded-lg border bg-popover shadow-md"
+                style={{
+                  position: "fixed",
+                  top: demoDropPos.top,
+                  left: demoDropPos.left,
+                  width: demoDropPos.width,
+                  zIndex: 9999,
+                }}
+              >
+                <div className="max-h-64 overflow-y-auto p-1">
+                  {demoFilteredClientes.length === 0 ? (
+                    <p className="px-2 py-1.5 text-sm text-muted-foreground">Nenhum cliente</p>
+                  ) : (
+                    demoFilteredClientes.map((c) => (
+                      <button
+                        key={c.idCliente}
+                        type="button"
+                        className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setDemoClienteId(c.idCliente);
+                          setDemoSearchOpen(false);
+                        }}
+                      >
+                        <span className="truncate">{c.nome}</span>
+                        {c.uf && <span className="ml-2 text-xs text-muted-foreground">{c.uf}</span>}
+                      </button>
+                    ))
+                  )}
+                  {demoFilteredClientes.length === 50 && demoSearch.trim() === "" && (
+                    <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                      Mostrando 50. Digite para buscar.
+                    </p>
+                  )}
+                </div>
+              </div>,
+              document.body,
+            )}
+
+          {/* Conteúdo */}
+          {demoLoading && (
+            <p className="text-sm text-muted-foreground">Carregando demonstrativo…</p>
+          )}
+          {demoError && (
+            <p className="text-sm text-red-600 dark:text-red-400">Erro: {demoError}</p>
+          )}
+          {!demoClienteId && !demoLoading && (
+            <p className="text-sm text-muted-foreground">
+              Selecione um cliente para ver o demonstrativo do período {periodoLabel}.
+            </p>
+          )}
+          {demoData && demoData.produtos.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              Sem itens comprados por este cliente no período.
+            </p>
+          )}
+          {demoData && demoData.produtos.length > 0 && (
+            <div className="overflow-x-auto rounded-lg border border-border/50">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
+                      Produto
+                    </TableHead>
+                    {demoData.meses.map((m) => {
+                      const [, mm] = m.split("-");
+                      return (
+                        <TableHead
+                          key={m}
+                          className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium"
+                        >
+                          {MESES_CURTOS[mm] ?? m}
+                        </TableHead>
+                      );
+                    })}
+                    <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
+                      Total
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {demoData.produtos.map((p) => {
+                    const key = `${p.idProduto ?? "_"}|${p.descProduto}`;
+                    return (
+                      <TableRow key={key} className="hover:bg-muted/50">
+                        <TableCell
+                          className="font-medium max-w-[280px] truncate"
+                          title={p.descProduto}
+                        >
+                          {p.descProduto}
+                        </TableCell>
+                        {demoData.meses.map((m) => (
+                          <TableCell key={m} className="text-right tabular-nums">
+                            {p.porMes[m] ? formatBRL(p.porMes[m]) : "—"}
+                          </TableCell>
+                        ))}
+                        <TableCell className="text-right tabular-nums font-medium">
+                          {formatBRL(p.total)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  <TableRow className="border-t-2 border-border bg-muted/30 font-medium hover:bg-muted/40">
+                    <TableCell className="font-semibold">Total</TableCell>
+                    {demoData.meses.map((m) => (
+                      <TableCell key={m} className="text-right tabular-nums">
+                        {demoData.totaisMensais[m] ? formatBRL(demoData.totaisMensais[m]) : "—"}
+                      </TableCell>
+                    ))}
+                    <TableCell className="text-right tabular-nums font-semibold">
+                      {formatBRL(demoData.totalGeral)}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
