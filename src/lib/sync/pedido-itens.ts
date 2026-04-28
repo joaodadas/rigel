@@ -1,5 +1,5 @@
-import { Pool } from "pg";
 import { createSupabaseServer } from "@/lib/supabase/client";
+import { getPgPool } from "@/lib/db/pg";
 import { VHSYS_BASE_URL } from "@/lib/vhsys/endpoints";
 import { MARKETPLACE_VENDEDOR_IDS } from "@/lib/config/vendedores-map";
 
@@ -8,16 +8,16 @@ const BATCH_SIZE = 200;
 const CONCURRENCY = 5;
 const REQUEST_DELAY_MS = 200;
 
+// Schema espelha o que o sync anterior populou (e o que a API VHSys retorna).
 interface PedidoItemAPI {
-  id_pedido_produto: number;
+  id_ped_produto: number;
   id_pedido: number;
   id_produto: number | null;
   desc_produto: string | null;
-  cod_produto: string | null;
-  quantidade: number | string | null;
-  valor_unitario: number | string | null;
-  valor_total: number | string | null;
-  desconto: number | string | null;
+  qtde_produto: number | string | null;
+  valor_unit_produto: number | string | null;
+  valor_total_produto: number | string | null;
+  desconto_produto: number | string | null;
 }
 
 export interface PedidoItensSyncStats {
@@ -27,18 +27,6 @@ export interface PedidoItensSyncStats {
   errors: number;
   remaining: number;
   durationMs: number;
-}
-
-let pgPool: Pool | null = null;
-function getPgPool(): Pool {
-  if (!pgPool) {
-    pgPool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-      max: 3,
-    });
-  }
-  return pgPool;
 }
 
 // Marca como sincronizados pedidos que já possuem rows em pedido_itens (de syncs anteriores).
@@ -128,20 +116,19 @@ export async function runPedidoItensSync(): Promise<PedidoItensSyncStats> {
 
         if (itens && itens.length > 0) {
           const rows = itens.map((it) => ({
-            id_pedido_produto: it.id_pedido_produto,
+            id_ped_produto: it.id_ped_produto,
             id_pedido: it.id_pedido,
             id_produto: it.id_produto,
             desc_produto: it.desc_produto,
-            cod_produto: it.cod_produto,
-            quantidade: num(it.quantidade),
-            valor_unitario: num(it.valor_unitario),
-            valor_total: num(it.valor_total),
-            desconto: num(it.desconto),
+            qtde_produto: num(it.qtde_produto),
+            valor_unit_produto: num(it.valor_unit_produto),
+            valor_total_produto: num(it.valor_total_produto),
+            desconto_produto: num(it.desconto_produto),
           }));
 
           const { error: upsertError } = await supabase
             .from("pedido_itens")
-            .upsert(rows, { onConflict: "id_pedido_produto" });
+            .upsert(rows, { onConflict: "id_ped_produto" });
 
           if (upsertError) throw upsertError;
           itensUpserted += rows.length;
