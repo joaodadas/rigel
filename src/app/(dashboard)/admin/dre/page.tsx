@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
-import { getMesesDisponiveis, getLancamentos } from "@/lib/queries/dre";
+import { getMesesDisponiveis, getLancamentos, getUploadsPorMes } from "@/lib/queries/dre";
 import {
   EMPRESA_BY_CODE,
   EMPRESAS_OPERACIONAIS,
@@ -14,7 +14,11 @@ import {
   type DreSnapshot,
 } from "@/lib/dre/computacoes";
 import { gerarResumo } from "@/lib/dre/resumo-executivo";
+import { computeAlertas } from "@/lib/dre/alertas";
 import { Header } from "./_components/header";
+import { Alertas } from "./_components/alertas";
+import { UploadDialog } from "./_components/upload-dialog";
+import { UploadsGrid } from "./_components/uploads-grid";
 import { Filters } from "./_components/filters";
 import { ExecSummary } from "./_components/exec-summary";
 import { KpiGrid } from "./_components/kpi-grid";
@@ -56,11 +60,16 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
   if (!disponiveis) {
     return (
       <main className={styles.container}>
-        <Header ano={new Date().getFullYear()} subtitle="SEM DADOS · AGUARDANDO UPLOAD" />
+        <Header
+          ano={new Date().getFullYear()}
+          subtitle="SEM DADOS · AGUARDANDO UPLOAD"
+          actions={<UploadDialog />}
+        />
         <div className={styles.emptyState}>
           <div className={styles.emptyTitle}>Nenhum upload registrado</div>
           <div className={styles.emptyHint}>
-            Use POST /api/dre/upload (admin) para popular a primeira planilha.
+            Clique em <strong style={{ color: "var(--gold)" }}>UPLOAD DRE MENSAL</strong> no
+            topo para enviar a primeira planilha.
           </div>
         </div>
       </main>
@@ -75,7 +84,24 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
 
   // Carrega todos os lançamentos do ano de uma vez (volume baixo, ~225/mês × N).
   // Necessário para: snapshot atual, prev, trend mensal, ranking por empresa.
-  const lancamentos = await getLancamentos({ ano, meses });
+  const [lancamentos, uploadsPorMes] = await Promise.all([
+    getLancamentos({ ano, meses }),
+    getUploadsPorMes(ano),
+  ]);
+
+  // Última data de upload (mais recente entre todos os meses)
+  let ultimoUpload: string | null = null;
+  for (const u of Object.values(uploadsPorMes)) {
+    if (!ultimoUpload || u.uploadedAt > ultimoUpload) ultimoUpload = u.uploadedAt;
+  }
+  const ultimoUploadBR = ultimoUpload
+    ? (() => {
+        const d = new Date(ultimoUpload);
+        return Number.isNaN(d.getTime())
+          ? null
+          : `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getFullYear()).slice(-2)}`;
+      })()
+    : null;
 
   const modo: "mes" | "acumulado" = mesParam === "acum" ? "acumulado" : "mes";
   const periodos = meses.map((m) => periodoISO(ano, m));
@@ -145,9 +171,17 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
   // Tag da seção tabela
   const dreTag = `${modo === "acumulado" ? "ACUMULADO" : MES_NOME[mesParam as number].toUpperCase()} · ${empNome}`;
 
+  // Alertas (sinais financeiros)
+  const alertas = computeAlertas({ snap, prev, empresa, semInvest });
+
   return (
     <main className={styles.container}>
-      <Header ano={ano} subtitle={subtitle} />
+      <Header
+        ano={ano}
+        subtitle={subtitle}
+        ultimaAtualizacao={ultimoUploadBR}
+        actions={<UploadDialog />}
+      />
       <Filters
         mesAtual={mesParam}
         empresaAtual={empresa}
@@ -187,10 +221,22 @@ export default async function DREPage({ searchParams }: { searchParams: Promise<
       </div>
 
       <div className={styles.sectionTitle}>
+        <h2>Sinais Financeiros</h2>
+        <span className={styles.sectionTag}>ANÁLISE AUTOMATIZADA</span>
+      </div>
+      <Alertas alertas={alertas} />
+
+      <div className={styles.sectionTitle} style={{ marginTop: 40 }}>
         <h2>Demonstrativo Detalhado</h2>
         <span className={styles.sectionTag}>{dreTag}</span>
       </div>
       <TabelaDRE snap={snap} prev={prev} semInvest={semInvest} compareLabel={compareLabel} />
+
+      <div className={styles.sectionTitle}>
+        <h2>Gestão de Uploads</h2>
+        <span className={styles.sectionTag}>DRE MENSAL · XLSX</span>
+      </div>
+      <UploadsGrid ano={ano} porMes={uploadsPorMes} />
 
       <footer>
         <span>RIGEL · CONTROLADORIA · DRE EXECUTIVO</span>

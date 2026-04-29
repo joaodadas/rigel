@@ -576,6 +576,34 @@
 }
 .dreShell .companyMargin.barNeg { color: var(--neg); }
 
+/* ALERTS */
+.dreShell .alerts { display: flex; flex-direction: column; gap: 10px; }
+.dreShell .alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 18px;
+  background: var(--bg-soft);
+  border-left: 3px solid var(--warn);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.dreShell .alert.alertNeg { border-left-color: var(--neg); background: rgba(248, 113, 113, 0.05); }
+.dreShell .alert.alertPos { border-left-color: var(--pos); background: rgba(74, 222, 128, 0.05); }
+.dreShell .alert.alertInfo { border-left-color: var(--accent); }
+.dreShell .alertIcon {
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-size: 14px;
+  font-weight: 700;
+  padding-top: 1px;
+  flex-shrink: 0;
+}
+.dreShell .alert.alertNeg .alertIcon { color: var(--neg); }
+.dreShell .alert.alertPos .alertIcon { color: var(--pos); }
+.dreShell .alert.alertInfo .alertIcon { color: var(--accent); }
+.dreShell .alertText { flex: 1; color: var(--text-dim); }
+.dreShell .alertText strong { color: var(--highlight); }
+
 /* DRE TABLE */
 .dreShell .dreTable {
   background: var(--bg-elev);
@@ -685,6 +713,137 @@
   font-family: var(--font-mono), "JetBrains Mono", monospace;
   letter-spacing: 1px;
 }
+
+/* UPLOAD ZONE + DIALOG */
+.dreShell .uploadZone {
+  background: var(--bg-elev);
+  border: 1px dashed var(--border);
+  padding: 40px;
+  text-align: center;
+  transition: all 0.2s;
+  margin-bottom: 20px;
+  cursor: pointer;
+}
+.dreShell .uploadZone:hover { border-color: var(--gold); background: rgba(212, 175, 106, 0.03); }
+.dreShell .uploadZone.dragOver { border-color: var(--gold); background: rgba(212, 175, 106, 0.08); }
+.dreShell .uploadZoneTitle {
+  font-family: var(--font-fraunces), Fraunces, serif;
+  font-size: 17px;
+  color: var(--highlight);
+  margin-bottom: 6px;
+}
+.dreShell .uploadZoneHint {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  letter-spacing: 1px;
+}
+.dreShell .historyList {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+}
+.dreShell .historyItem {
+  background: var(--bg-elev);
+  padding: 14px;
+  text-align: left;
+}
+.dreShell .historyItem.uploaded { border-bottom: 2px solid var(--pos); }
+.dreShell .historyItem.pending { border-bottom: 2px solid var(--border); }
+.dreShell .historyMonth {
+  font-family: var(--font-fraunces), Fraunces, serif;
+  font-size: 13px;
+  color: var(--highlight);
+  margin-bottom: 4px;
+}
+.dreShell .historyDate {
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.8px;
+}
+.dreShell .historyItem.uploaded .historyDate { color: var(--pos); }
+
+.dreShell .dialogOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 9, 13, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.dreShell .dialogPanel {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--gold);
+  width: 100%;
+  max-width: 540px;
+  padding: 32px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+.dreShell .dialogTitle {
+  font-family: var(--font-fraunces), Fraunces, serif;
+  font-size: 22px;
+  color: var(--highlight);
+  margin-bottom: 6px;
+}
+.dreShell .dialogSubtitle {
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: var(--gold);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+.dreShell .dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.dreShell .secondaryBtn {
+  padding: 10px 18px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.dreShell .secondaryBtn:hover { border-color: var(--gold-soft); color: var(--text); }
+.dreShell .secondaryBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+.dreShell .primaryBtn {
+  padding: 10px 18px;
+  background: var(--gold);
+  color: #0B0E13;
+  border: none;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.dreShell .primaryBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+.dreShell .dialogStatus {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: var(--bg-soft);
+  border-left: 3px solid var(--accent);
+  font-size: 12px;
+  color: var(--text-dim);
+  font-family: var(--font-mono), "JetBrains Mono", monospace;
+}
+.dreShell .dialogStatus.dialogStatusErr { border-left-color: var(--neg); color: var(--neg); }
+.dreShell .dialogStatus.dialogStatusOk { border-left-color: var(--pos); color: var(--pos); }
 
 /* EMPTY STATE */
 .dreShell .emptyState {

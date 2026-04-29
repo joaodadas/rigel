@@ -46,6 +46,46 @@ export async function getMesesDisponiveis(): Promise<MesesDisponiveisResult | nu
   return { ano, meses: [...meses].sort((a, b) => a - b) };
 }
 
+export interface UploadDoMes {
+  mes: number;          // 1..12
+  uploadedAt: string;   // ISO
+  status: "sucesso" | "processando" | "erro";
+}
+
+/**
+ * Para cada mês de 1..12 do ano fornecido, devolve a entrada de upload mais
+ * recente que cobre aquele mês. Mês não coberto = ausente do retorno.
+ * Usado pela history-grid no rodapé do dashboard.
+ */
+export async function getUploadsPorMes(ano: number): Promise<Record<number, UploadDoMes>> {
+  const supabase = createSupabaseServer();
+  const { data, error } = await supabase
+    .from("dre_uploads")
+    .select("status, meses_processados, created_at")
+    .eq("ano_referencia", ano)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[dre/getUploadsPorMes]", error);
+    return {};
+  }
+
+  const out: Record<number, UploadDoMes> = {};
+  for (const row of data ?? []) {
+    for (const m of row.meses_processados ?? []) {
+      // Como ordenamos desc por created_at, a primeira ocorrência de cada mês é a mais recente
+      if (!out[m]) {
+        out[m] = {
+          mes: m,
+          uploadedAt: row.created_at,
+          status: row.status,
+        };
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * Lê todos os lançamentos de um conjunto de meses + empresa.
  * `meses`: array de 1..12 dentro de `ano`. Vazio = sem retorno.
