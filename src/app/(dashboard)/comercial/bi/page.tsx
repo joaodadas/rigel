@@ -19,6 +19,7 @@ interface PageProps {
     ano?: string;
     modo?: string;
     vendedor?: string;
+    categoria?: string;
   }>;
 }
 
@@ -35,6 +36,10 @@ export default async function ComercialBIPage({ searchParams }: PageProps) {
   const ano = params.ano ? Number(params.ano) : currentYear;
   const modo: "mes" | "acumulado" = params.modo === "mes" ? "mes" : "acumulado";
   const vendedor = params.vendedor && params.vendedor !== "todos" ? params.vendedor : null;
+  const categoria =
+    params.categoria && params.categoria !== "todas" && !Number.isNaN(Number(params.categoria))
+      ? Number(params.categoria)
+      : null;
 
   const mesInicio = modo === "mes" ? mes : 1;
 
@@ -56,7 +61,7 @@ export default async function ComercialBIPage({ searchParams }: PageProps) {
     getClientesAtivosVendedor(),
     getClientesInativos(),
     getProdutosEvolucao(6, vendedor),
-    getProdutosTopEvolucao(mesInicio, mes, ano, vendedor, 20),
+    getProdutosTopEvolucao(mesInicio, mes, ano, vendedor, 20, categoria),
     getTopClientes(mesInicio, mes, ano, "geral", 20, vendedor),
     getTopClientes(mesInicio, mes, ano, "vendas_internas", 20, vendedor),
     getClientesB2BList(),
@@ -78,6 +83,7 @@ export default async function ComercialBIPage({ searchParams }: PageProps) {
       defaultAno={ano}
       defaultModo={modo}
       defaultVendedor={vendedor}
+      defaultCategoria={categoria}
     />
   );
 }

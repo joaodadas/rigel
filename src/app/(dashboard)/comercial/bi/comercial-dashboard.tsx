@@ -26,6 +26,7 @@ import {
   ChevronDown,
   Search,
   Trophy,
+  RefreshCw,
 } from "lucide-react";
 import {
   Card,
@@ -97,6 +98,7 @@ interface ComercialDashboardProps {
   defaultAno: number;
   defaultModo: Modo;
   defaultVendedor: string | null;
+  defaultCategoria: number | null;
 }
 
 const formatBRL = (value: number) =>
@@ -180,37 +182,100 @@ function ChartTooltipContent({
 // Tabela vendedores (reutilizada para Internas e Representantes)
 // ---------------------------------------------------------------------------
 
+type VendedorSortKey =
+  | "vendedor"
+  | "valorTotal"
+  | "ticketMedio"
+  | "qtdPedidos"
+  | "meta"
+  | "pctMeta"
+  | "deltaMesAnterior";
+
+function SortableHead({
+  label,
+  sortKey,
+  current,
+  direction,
+  onSort,
+  align = "left",
+}: {
+  label: string;
+  sortKey: VendedorSortKey;
+  current: VendedorSortKey;
+  direction: "asc" | "desc";
+  onSort: (key: VendedorSortKey) => void;
+  align?: "left" | "right";
+}) {
+  const active = current === sortKey;
+  const arrow = active ? (direction === "asc" ? "↑" : "↓") : "";
+  return (
+    <TableHead
+      className={`text-xs uppercase tracking-wider font-medium ${
+        align === "right" ? "text-right" : ""
+      }`}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={`inline-flex items-center gap-1 transition ${
+          active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+        }`}
+      >
+        <span>{label}</span>
+        <span className="w-3 text-[10px]">{arrow}</span>
+      </button>
+    </TableHead>
+  );
+}
+
 function TabelaVendedores({ rows }: { rows: PedidoVendedor[] }) {
+  const [sortKey, setSortKey] = useState<VendedorSortKey>("valorTotal");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const handleSort = (key: VendedorSortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      // numéricos começam desc; texto começa asc
+      setSortDir(key === "vendedor" ? "asc" : "desc");
+    }
+  };
+
+  const sortedRows = useMemo(() => {
+    const copy = [...rows];
+    copy.sort((a, b) => {
+      const av = a[sortKey];
+      const bv = b[sortKey];
+      // null vai pro fim independente da direção
+      if (av === null && bv === null) return 0;
+      if (av === null) return 1;
+      if (bv === null) return -1;
+      if (typeof av === "number" && typeof bv === "number") {
+        return sortDir === "asc" ? av - bv : bv - av;
+      }
+      const cmp = String(av).localeCompare(String(bv), "pt-BR");
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return copy;
+  }, [rows, sortKey, sortDir]);
+
   return (
     <div className="overflow-x-auto rounded-lg border border-border/50">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-              Vendedor
-            </TableHead>
-            <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-              Valor Total
-            </TableHead>
-            <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-              Ticket Médio
-            </TableHead>
-            <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-              Pedidos
-            </TableHead>
-            <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-              Meta
-            </TableHead>
-            <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-              % Meta
-            </TableHead>
-            <TableHead className="text-right text-xs uppercase tracking-wider text-muted-foreground font-medium">
-              Δ vs mês ant.
-            </TableHead>
+            <SortableHead label="Vendedor" sortKey="vendedor" current={sortKey} direction={sortDir} onSort={handleSort} />
+            <SortableHead label="Valor Total" sortKey="valorTotal" current={sortKey} direction={sortDir} onSort={handleSort} align="right" />
+            <SortableHead label="Ticket Médio" sortKey="ticketMedio" current={sortKey} direction={sortDir} onSort={handleSort} align="right" />
+            <SortableHead label="Pedidos" sortKey="qtdPedidos" current={sortKey} direction={sortDir} onSort={handleSort} align="right" />
+            <SortableHead label="Meta" sortKey="meta" current={sortKey} direction={sortDir} onSort={handleSort} align="right" />
+            <SortableHead label="% Meta" sortKey="pctMeta" current={sortKey} direction={sortDir} onSort={handleSort} align="right" />
+            <SortableHead label="Δ vs mês ant." sortKey="deltaMesAnterior" current={sortKey} direction={sortDir} onSort={handleSort} align="right" />
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((p) => (
+          {sortedRows.map((p) => (
             <TableRow key={p.vendedor} className="hover:bg-muted/50">
               <TableCell className="font-medium">{p.vendedor}</TableCell>
               <TableCell className="text-right tabular-nums">{formatBRL(p.valorTotal)}</TableCell>
@@ -244,7 +309,7 @@ function TabelaVendedores({ rows }: { rows: PedidoVendedor[] }) {
               </TableCell>
             </TableRow>
           ))}
-          {rows.length === 0 && (
+          {sortedRows.length === 0 && (
             <TableRow>
               <TableCell colSpan={7} className="h-16 text-center text-muted-foreground">
                 Nenhum dado disponível
@@ -410,13 +475,32 @@ export function ComercialDashboard({
   defaultAno,
   defaultModo,
   defaultVendedor,
+  defaultCategoria,
 }: ComercialDashboardProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await fetch("/api/bi/refresh", { method: "POST" });
+    } catch (e) {
+      console.error("[bi/refresh]", e);
+    } finally {
+      startTransition(() => {
+        router.refresh();
+      });
+      setIsRefreshing(false);
+    }
+  }, [isRefreshing, router]);
+
   const mes = defaultMes;
   const ano = defaultAno;
   const modo = defaultModo;
   const vendedorFilter = defaultVendedor ?? "todos";
+  const categoriaFilter = defaultCategoria;
 
   const [faixaInatividade, setFaixaInatividade] = useState("todas");
   const [buscaInativo, setBuscaInativo] = useState("");
@@ -432,22 +516,35 @@ export function ComercialDashboard({
   const demoSearchRef = useRef<HTMLDivElement | null>(null);
   const demoDropdownRef = useRef<HTMLDivElement | null>(null);
 
+  // Busca de produto no Indicador 5
+  const [produtoSearch, setProdutoSearch] = useState("");
+  const [produtoSearchOpen, setProdutoSearchOpen] = useState(false);
+  const produtoSearchRef = useRef<HTMLDivElement | null>(null);
+
   const navigateParams = useCallback(
-    (next: { mes?: number; ano?: number; modo?: Modo; vendedor?: string }) => {
+    (next: {
+      mes?: number;
+      ano?: number;
+      modo?: Modo;
+      vendedor?: string;
+      categoria?: number | null;
+    }) => {
       const m = next.mes ?? mes;
       const a = next.ano ?? ano;
       const md = next.modo ?? modo;
       const v = next.vendedor ?? vendedorFilter;
+      const cat = next.categoria === undefined ? categoriaFilter : next.categoria;
       const params = new URLSearchParams();
       params.set("mes", String(m));
       params.set("ano", String(a));
       params.set("modo", md);
       if (v && v !== "todos") params.set("vendedor", v);
+      if (cat != null) params.set("categoria", String(cat));
       startTransition(() => {
         router.push(`?${params.toString()}`);
       });
     },
-    [router, mes, ano, modo, vendedorFilter],
+    [router, mes, ano, modo, vendedorFilter, categoriaFilter],
   );
 
   // Vendedores distintos para o select
@@ -477,6 +574,21 @@ export function ComercialDashboard({
   // -------------------------------------------------- Indicador 6 (demo)
   const mesInicio = modo === "mes" ? mes : 1;
 
+  // Período local do demonstrativo — começa seguindo os filtros globais,
+  // mas o usuário pode estreitar/expandir (de/até) dentro do card.
+  const [demoMesIni, setDemoMesIni] = useState<number>(mesInicio);
+  const [demoMesFim, setDemoMesFim] = useState<number>(mes);
+
+  // Quando filtros globais mudam, ressincroniza o período do demo.
+  useEffect(() => {
+    setDemoMesIni(mesInicio);
+    setDemoMesFim(mes);
+  }, [mesInicio, mes, ano]);
+
+  // Garante mesIni ≤ mesFim
+  const safeDemoMesIni = Math.min(demoMesIni, demoMesFim);
+  const safeDemoMesFim = Math.max(demoMesIni, demoMesFim);
+
   useEffect(() => {
     if (!demoClienteId) {
       setDemoData(null);
@@ -486,7 +598,7 @@ export function ComercialDashboard({
     const ctrl = new AbortController();
     setDemoLoading(true);
     setDemoError(null);
-    const url = `/api/bi/demonstrativo-cliente?idCliente=${encodeURIComponent(demoClienteId)}&mesInicio=${mesInicio}&mesFim=${mes}&ano=${ano}`;
+    const url = `/api/bi/demonstrativo-cliente?idCliente=${encodeURIComponent(demoClienteId)}&mesInicio=${safeDemoMesIni}&mesFim=${safeDemoMesFim}&ano=${ano}`;
     fetch(url, { signal: ctrl.signal })
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -498,7 +610,7 @@ export function ComercialDashboard({
       })
       .finally(() => setDemoLoading(false));
     return () => ctrl.abort();
-  }, [demoClienteId, mesInicio, mes, ano]);
+  }, [demoClienteId, safeDemoMesIni, safeDemoMesFim, ano]);
 
   // Calcula posição do dropdown (renderizado em portal pra escapar de stacking)
   const updateDemoDropPos = useCallback(() => {
@@ -542,6 +654,40 @@ export function ComercialDashboard({
     () => clientesB2B.find((c) => c.idCliente === demoClienteId) ?? null,
     [clientesB2B, demoClienteId],
   );
+
+  // Fechar dropdown de produto ao clicar fora
+  useEffect(() => {
+    if (!produtoSearchOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (produtoSearchRef.current?.contains(target)) return;
+      setProdutoSearchOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [produtoSearchOpen]);
+
+  const produtoChave = useCallback(
+    (p: { idProduto: number | null; descProduto: string }) =>
+      `${p.idProduto ?? "_"}|${p.descProduto}`,
+    [],
+  );
+
+  const produtoFilteredList = useMemo(() => {
+    const q = produtoSearch.trim().toLowerCase();
+    if (!q) return produtosTop.produtos;
+    return produtosTop.produtos.filter((p) =>
+      p.descProduto.toLowerCase().includes(q),
+    );
+  }, [produtosTop.produtos, produtoSearch]);
+
+  const produtoSelectedLabel = useMemo(() => {
+    if (produtoSelecionado === "_top") return "Total dos top 20";
+    return (
+      produtosTop.produtos.find((p) => produtoChave(p) === produtoSelecionado)?.descProduto ??
+      "Produto"
+    );
+  }, [produtoSelecionado, produtosTop.produtos, produtoChave]);
 
   // ------------------------------------------------------------- Indicador 1
   const filteredPedidosVendedor = useMemo(
@@ -613,9 +759,6 @@ export function ComercialDashboard({
   );
 
   // ----------------------------------------------------------- Indicador 5
-  const produtoChave = useCallback((p: { idProduto: number | null; descProduto: string }) =>
-    `${p.idProduto ?? "_"}|${p.descProduto}`, []);
-
   const produtosTopChart = useMemo(() => {
     if (produtosTop.produtos.length === 0) return [];
     return produtosTop.meses.map((mes) => {
@@ -737,6 +880,17 @@ export function ComercialDashboard({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing || isPending}
+            title="Limpa o cache e refaz as consultas"
+          >
+            <RefreshCw className={`mr-1 size-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+            Atualizar dados
+          </Button>
+
           {/* Modo Mês × Acumulado */}
           <div className="inline-flex rounded-md border border-border/50 p-0.5">
             <button
@@ -861,6 +1015,11 @@ export function ComercialDashboard({
             <div>
               <CardTitle className="text-lg font-semibold">Vendas Internas</CardTitle>
               <CardDescription>Aline (VI-01) + Fátima (VI-02) — meta combinada</CardDescription>
+              <p className="mt-2 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground/80">Nota:</span> a VHSys não diferencia
+                VI-01 e VI-02 nos pedidos, então ambas aparecem agregadas. A meta exibida soma
+                R$ 3.000.000 (Aline) + R$ 646.425 (Fátima) = R$ 3.646.425/ano.
+              </p>
             </div>
             <Button
               variant="ghost"
@@ -1258,26 +1417,104 @@ export function ComercialDashboard({
                 Top {produtosTop.produtos.length} produtos no período. Var. % compara com período anterior de mesmo tamanho.
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              <Select value={produtoSelecionado} onValueChange={(v) => setProdutoSelecionado(v ?? "_top")}>
-                <SelectTrigger className="w-[260px]">
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                value={categoriaFilter == null ? "todas" : String(categoriaFilter)}
+                onValueChange={(v) =>
+                  navigateParams({ categoria: v === "todas" || v == null ? null : Number(v) })
+                }
+              >
+                <SelectTrigger className="w-[180px]">
                   <SelectValue>
-                    {(v) =>
-                      v === "_top" || v == null
-                        ? "Total dos top 20"
-                        : produtosTop.produtos.find((p) => produtoChave(p) === v)?.descProduto ?? String(v)
-                    }
+                    {(v) => {
+                      if (v === "todas" || v == null) return "Todas as categorias";
+                      const id = Number(v);
+                      const found = produtosTop.categoriasDisponiveis.find(
+                        (c) => c.idCategoria === id,
+                      );
+                      return found
+                        ? `Cat. ${id} (${found.quantidade})`
+                        : `Cat. ${id}`;
+                    }}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_top">Total dos top 20</SelectItem>
-                  {produtosTop.produtos.map((p) => (
-                    <SelectItem key={produtoChave(p)} value={produtoChave(p)}>
-                      {p.descProduto}
+                <SelectContent align="end" alignItemWithTrigger={false}>
+                  <SelectItem value="todas">Todas as categorias</SelectItem>
+                  {produtosTop.categoriasDisponiveis.map((c) => (
+                    <SelectItem
+                      key={c.idCategoria ?? "_null"}
+                      value={c.idCategoria == null ? "_null" : String(c.idCategoria)}
+                      disabled={c.idCategoria == null}
+                    >
+                      {c.idCategoria == null
+                        ? `Sem categoria (${c.quantidade})`
+                        : `Cat. ${c.idCategoria} (${c.quantidade} produtos)`}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <div ref={produtoSearchRef} className="relative w-[280px]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProdutoSearchOpen((o) => !o);
+                    setProdutoSearch("");
+                  }}
+                  className="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 py-1.5 text-sm hover:bg-accent/50"
+                >
+                  <span className="truncate text-left" title={produtoSelectedLabel}>
+                    {produtoSelectedLabel}
+                  </span>
+                  <ChevronDown className="size-3.5 text-muted-foreground" />
+                </button>
+                {produtoSearchOpen && (
+                  <div className="absolute right-0 top-[calc(100%+4px)] z-30 w-[320px] rounded-lg border bg-popover shadow-md">
+                    <div className="relative border-b p-2">
+                      <Search className="absolute left-4 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        autoFocus
+                        className="pl-8"
+                        placeholder="Buscar produto…"
+                        value={produtoSearch}
+                        onChange={(e) => setProdutoSearch(e.target.value)}
+                      />
+                    </div>
+                    <div className="max-h-64 overflow-y-auto p-1">
+                      <button
+                        type="button"
+                        className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
+                        onClick={() => {
+                          setProdutoSelecionado("_top");
+                          setProdutoSearchOpen(false);
+                        }}
+                      >
+                        Total dos top 20
+                      </button>
+                      {produtoFilteredList.length === 0 ? (
+                        <p className="px-2 py-1.5 text-sm text-muted-foreground">
+                          Nenhum produto
+                        </p>
+                      ) : (
+                        produtoFilteredList.map((p) => (
+                          <button
+                            key={produtoChave(p)}
+                            type="button"
+                            className="flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
+                            onClick={() => {
+                              setProdutoSelecionado(produtoChave(p));
+                              setProdutoSearchOpen(false);
+                            }}
+                          >
+                            <span className="truncate" title={p.descProduto}>
+                              {p.descProduto}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
               <Button
                 variant="ghost"
                 size="sm"
@@ -1451,33 +1688,79 @@ export function ComercialDashboard({
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Seletor de cliente com busca */}
-          <div ref={demoSearchRef} className="relative w-full max-w-md">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  className="pl-8"
-                  placeholder="Buscar cliente…"
-                  value={demoSearchOpen ? demoSearch : demoSelectedCliente?.nome ?? ""}
-                  onFocus={() => {
-                    setDemoSearch("");
-                    setDemoSearchOpen(true);
-                  }}
-                  onChange={(e) => setDemoSearch(e.target.value)}
-                />
+          <div className="flex flex-wrap items-end gap-3">
+            <div ref={demoSearchRef} className="relative w-full max-w-md">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="pl-8"
+                    placeholder="Buscar cliente…"
+                    value={demoSearchOpen ? demoSearch : demoSelectedCliente?.nome ?? ""}
+                    onFocus={() => {
+                      setDemoSearch("");
+                      setDemoSearchOpen(true);
+                    }}
+                    onChange={(e) => setDemoSearch(e.target.value)}
+                  />
+                </div>
+                {demoClienteId && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setDemoClienteId(null);
+                      setDemoSearch("");
+                    }}
+                  >
+                    Limpar
+                  </Button>
+                )}
               </div>
-              {demoClienteId && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setDemoClienteId(null);
-                    setDemoSearch("");
-                  }}
+            </div>
+
+            {/* Seletor de período (de/até) — sobrepõe os filtros globais */}
+            <div className="flex items-end gap-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs uppercase tracking-wider text-muted-foreground">De</label>
+                <Select
+                  value={String(demoMesIni)}
+                  onValueChange={(v) => setDemoMesIni(Number(v))}
                 >
-                  Limpar
-                </Button>
-              )}
+                  <SelectTrigger className="w-[130px]">
+                    <SelectValue>
+                      {(v) => MESES.find((m) => String(m.value) === String(v))?.label ?? "Mês"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MESES.map((m) => (
+                      <SelectItem key={m.value} value={String(m.value)}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs uppercase tracking-wider text-muted-foreground">Até</label>
+                <Select
+                  value={String(demoMesFim)}
+                  onValueChange={(v) => setDemoMesFim(Number(v))}
+                >
+                  <SelectTrigger className="w-[130px]">
+                    <SelectValue>
+                      {(v) => MESES.find((m) => String(m.value) === String(v))?.label ?? "Mês"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MESES.map((m) => (
+                      <SelectItem key={m.value} value={String(m.value)}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
           {demoSearchOpen &&
@@ -1534,7 +1817,9 @@ export function ComercialDashboard({
           )}
           {!demoClienteId && !demoLoading && (
             <p className="text-sm text-muted-foreground">
-              Selecione um cliente para ver o demonstrativo do período {periodoLabel}.
+              Selecione um cliente para ver o demonstrativo de{" "}
+              {MESES[safeDemoMesIni - 1]?.label}/{ano}
+              {safeDemoMesIni !== safeDemoMesFim && ` até ${MESES[safeDemoMesFim - 1]?.label}/${ano}`}.
             </p>
           )}
           {demoData && demoData.produtos.length === 0 && (
