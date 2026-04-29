@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
@@ -412,6 +412,7 @@ export function ComercialDashboard({
   defaultVendedor,
 }: ComercialDashboardProps) {
   const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const mes = defaultMes;
   const ano = defaultAno;
   const modo = defaultModo;
@@ -442,7 +443,9 @@ export function ComercialDashboard({
       params.set("ano", String(a));
       params.set("modo", md);
       if (v && v !== "todos") params.set("vendedor", v);
-      router.push(`?${params.toString()}`);
+      startTransition(() => {
+        router.push(`?${params.toString()}`);
+      });
     },
     [router, mes, ano, modo, vendedorFilter],
   );
@@ -713,7 +716,17 @@ export function ComercialDashboard({
   const topData = topTab === "geral" ? topGeral : topInternas;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 relative">
+      {isPending && (
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-x-0 top-0 z-50 h-0.5 overflow-hidden"
+        >
+          <div className="h-full w-1/3 animate-[loader_1.2s_ease-in-out_infinite] bg-foreground/70" />
+          <style>{`@keyframes loader { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }`}</style>
+        </div>
+      )}
+
       {/* Header + Filters */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -829,12 +842,17 @@ export function ComercialDashboard({
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-        {kpiCards.map((card, index) => (
-          <KpiCard key={card.title} index={index} {...card} />
-        ))}
-      </div>
+      <div
+        className={`space-y-8 transition-opacity duration-200 ${
+          isPending ? "opacity-50 pointer-events-none" : ""
+        }`}
+      >
+        {/* KPI Cards */}
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          {kpiCards.map((card, index) => (
+            <KpiCard key={card.title} index={index} {...card} />
+          ))}
+        </div>
 
       {/* Indicador 1: Vendas Internas */}
       <Card>
@@ -1690,6 +1708,7 @@ export function ComercialDashboard({
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
