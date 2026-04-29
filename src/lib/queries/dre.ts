@@ -1,4 +1,5 @@
 import { createSupabaseServer } from "@/lib/supabase/client";
+import { supabaseFetchAll } from "@/lib/supabase/fetch-all";
 import type { Categoria } from "@/lib/dre/linhas";
 import type { EmpresaCode } from "@/lib/dre/empresas";
 
@@ -59,17 +60,17 @@ export async function getLancamentos(opts: {
   const supabase = createSupabaseServer();
   const periodos = opts.meses.map((m) => `${opts.ano}-${String(m).padStart(2, "0")}-01`);
 
-  let query = supabase
-    .from("dre_lancamentos")
-    .select("periodo, empresa, regime_tributario, categoria, sub_categoria, descricao, valor, pct_sobre_faturamento")
-    .in("periodo", periodos);
-
-  if (opts.empresa) query = query.eq("empresa", opts.empresa);
-
-  const { data, error } = await query;
-  if (error) {
-    console.error("[dre/getLancamentos]", error);
-    return [];
-  }
-  return (data ?? []) as DreLancamento[];
+  // Paginar — Supabase tem hard limit de 1000 rows por response.
+  // Volume típico: 225 rows × empresas × meses, pode passar de 1000 facilmente.
+  return supabaseFetchAll<DreLancamento>((from, to) => {
+    let query = supabase
+      .from("dre_lancamentos")
+      .select(
+        "periodo, empresa, regime_tributario, categoria, sub_categoria, descricao, valor, pct_sobre_faturamento",
+      )
+      .in("periodo", periodos)
+      .range(from, to);
+    if (opts.empresa) query = query.eq("empresa", opts.empresa);
+    return query;
+  });
 }
