@@ -78,9 +78,15 @@ export interface ProdutoTopRow {
   variacaoPct: number | null; // vs mesmo nº de meses anteriores ao período
 }
 
+export interface CategoriaDisponivel {
+  idCategoria: number | null;
+  quantidade: number; // nº de produtos distintos vendidos no período nessa categoria
+}
+
 export interface ProdutosTopEvolucao {
   meses: string[]; // YYYY-MM dentro do período, em ordem
   produtos: ProdutoTopRow[]; // top N por totalFaturamento desc
+  categoriasDisponiveis: CategoriaDisponivel[]; // sempre todas do período (independe do filtro de categoria)
 }
 
 export interface ClienteB2BListItem {
@@ -767,10 +773,11 @@ export async function getProdutosTopEvolucao(
   ano: number,
   vendedor?: string | null,
   topN: number = 20,
+  categoria?: number | null,
 ): Promise<ProdutosTopEvolucao> {
   return cacheGetOrFetchSWR(
-    CACHE_KEYS.biProdutosTop(mesInicio, mesFim, ano, topN, vendedor || undefined),
-    () => _fetchProdutosTopEvolucao(mesInicio, mesFim, ano, vendedor, topN),
+    `${CACHE_KEYS.biProdutosTop(mesInicio, mesFim, ano, topN, vendedor || undefined)}:cat${categoria ?? "_all"}`,
+    () => _fetchProdutosTopEvolucao(mesInicio, mesFim, ano, vendedor, topN, categoria),
   );
 }
 
@@ -780,6 +787,7 @@ async function _fetchProdutosTopEvolucao(
   ano: number,
   vendedor: string | null | undefined,
   topN: number,
+  categoria?: number | null,
 ): Promise<ProdutosTopEvolucao> {
   const pool = getPgPool();
 
@@ -792,8 +800,10 @@ async function _fetchProdutosTopEvolucao(
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
   const marketplaceArray = Array.from(MARKETPLACE_VENDEDOR_IDS).map(String);
 
+  // Query principal: top produtos com bucket curr/prev
   const { rows } = await pool.query<{
     id_produto: string | null;
+    id_categoria: string | null;
     desc_produto: string;
     mes: string;
     bucket: "curr" | "prev";
@@ -804,6 +814,7 @@ async function _fetchProdutosTopEvolucao(
   }>(
     `SELECT
        pi.id_produto::text AS id_produto,
+       pr.id_categoria::text AS id_categoria,
        COALESCE(NULLIF(TRIM(pi.desc_produto), ''), '(sem descrição)') AS desc_produto,
        SUBSTR(p.data_pedido::text, 1, 7) AS mes,
        CASE WHEN p.data_pedido >= $1 AND p.data_pedido <= $2 THEN 'curr' ELSE 'prev' END AS bucket,
@@ -813,14 +824,41 @@ async function _fetchProdutosTopEvolucao(
        SUM(pi.qtde_produto)::float8 AS quantidade
      FROM pedido_itens pi
      JOIN pedidos p ON p.id_pedido = pi.id_pedido
+     LEFT JOIN produtos pr ON pr.id_produto = pi.id_produto
      WHERE p.status_pedido = 'Atendido'
        AND p.lixeira = 'Nao'
        AND (p.vendedor_pedido_id IS NULL OR p.vendedor_pedido_id::text <> ALL($4::text[]))
        AND p.data_pedido >= $3
        AND p.data_pedido <= $2
-     GROUP BY pi.id_produto, desc_produto, mes, bucket, p.vendedor_pedido_id, p.vendedor_pedido`,
-    [fmt(currStart), fmt(currEnd), fmt(prevStart), marketplaceArray],
+       AND ($5::int IS NULL OR pr.id_categoria = $5::int)
+     GROUP BY pi.id_produto, pr.id_categoria, pi.desc_produto, mes, bucket, p.vendedor_pedido_id, p.vendedor_pedido`,
+    [fmt(currStart), fmt(currEnd), fmt(prevStart), marketplaceArray, categoria ?? null],
   );
+
+  // Query auxiliar: lista de categorias disponíveis no período corrente
+  // (sem filtro de categoria — para popular o select).
+  const { rows: catRows } = await pool.query<{
+    id_categoria: string | null;
+    quantidade: string;
+  }>(
+    `SELECT pr.id_categoria::text AS id_categoria, COUNT(DISTINCT pi.id_produto) AS quantidade
+     FROM pedido_itens pi
+     JOIN pedidos p ON p.id_pedido = pi.id_pedido
+     LEFT JOIN produtos pr ON pr.id_produto = pi.id_produto
+     WHERE p.status_pedido = 'Atendido'
+       AND p.lixeira = 'Nao'
+       AND (p.vendedor_pedido_id IS NULL OR p.vendedor_pedido_id::text <> ALL($3::text[]))
+       AND p.data_pedido >= $1
+       AND p.data_pedido <= $2
+     GROUP BY pr.id_categoria
+     ORDER BY quantidade DESC`,
+    [fmt(currStart), fmt(currEnd), marketplaceArray],
+  );
+
+  const categoriasDisponiveis: CategoriaDisponivel[] = catRows.map((r) => ({
+    idCategoria: r.id_categoria != null ? Number(r.id_categoria) : null,
+    quantidade: Number(r.quantidade) || 0,
+  }));
 
   // Lista de meses do período (sempre presente na tabela mesmo quando sem dados).
   const meses: string[] = [];
@@ -883,7 +921,7 @@ async function _fetchProdutosTopEvolucao(
       variacaoPct: a.totalPrev > 0 ? ((a.totalCurr - a.totalPrev) / a.totalPrev) * 100 : null,
     }));
 
-  return { meses, produtos };
+  return { meses, produtos, categoriasDisponiveis };
 }
 
 // ---------------------------------------------------------------------------
