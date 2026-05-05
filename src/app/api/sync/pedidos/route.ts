@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabase/client";
 import { vhsysGet } from "@/lib/vhsys/client";
 import { ENDPOINTS, MAX_PAGE_SIZE } from "@/lib/vhsys/endpoints";
+import { isAuthorizedCron } from "@/lib/auth/cron";
 
 export const maxDuration = 300;
 
@@ -19,7 +20,11 @@ function pickFields(item: Record<string, unknown>, fields: string[]): Record<str
   return result;
 }
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  if (!isAuthorizedCron(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const supabase = createSupabaseServer();
   let offset = 0;
   let total = Infinity;
