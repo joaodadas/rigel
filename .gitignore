@@ -43,3 +43,6 @@ next-env.d.ts
 
 
 /.claude/
+
+# Local one-off scripts with secrets (ex: create-admin-users.ts contém senhas)
+/scripts/create-admin-users.ts
