@@ -24,8 +24,13 @@ export interface MetaVendedor {
 }
 
 export const METAS_VENDEDORES: MetaVendedor[] = [
-  // Vendas Internas (Aline VI-01 + Fátima VI-02 — fundidas pois VHSys não diferencia)
-  { nome: "Vendas Internas", tipo: "vendas_internas", meta_2026: 3646425, crescimento: "N/A" },
+  // Vendas Internas — split conforme PROMPT_V2_BI_COMERCIAL_RIGEL.md (Bloco 10):
+  //   "Vendas Internas"   (id VHSys 207727) → Aline   (VI-01, pedidos reativos) — R$ 3.000.000
+  //   "Vendas Internas 2" (id VHSys 266629) → Fátima  (VI-02, vendas novas)     — R$   646.425
+  // Atribuição ID↔pessoa baseada na cronologia (207727 ativo desde 2021; 266629 criado em 16/04/2026)
+  // — pendente de confirmação com a gestora Raquel; se invertido, basta trocar os meta_2026.
+  { nome: "Vendas Internas", tipo: "vendas_internas", meta_2026: 3000000, crescimento: "N/A" },
+  { nome: "Vendas Internas 2", tipo: "vendas_internas", meta_2026: 646425, crescimento: "N/A" },
   // Representantes
   { nome: "Edwilson", tipo: "representante", fat_2025: 2470091, meta_2026: 3119621, crescimento: "26.3%" },
   { nome: "Claudio", tipo: "representante", fat_2025: 2365313, meta_2026: 2365313, crescimento: "0%", status: "mantido" },

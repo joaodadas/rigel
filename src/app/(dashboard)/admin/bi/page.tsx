@@ -52,6 +52,8 @@ export default async function AdminBIPage({ searchParams }: PageProps) {
     produtosTop,
     topGeral,
     topInternas,
+    topInternas2,
+    topInternasTotal,
     clientesB2B,
   ] = await Promise.all([
     getComercialKPIs(mesInicio, mes, ano, vendedor),
@@ -63,6 +65,8 @@ export default async function AdminBIPage({ searchParams }: PageProps) {
     getProdutosTopEvolucao(mesInicio, mes, ano, vendedor, 20, categoria),
     getTopClientes(mesInicio, mes, ano, "geral", 20, vendedor),
     getTopClientes(mesInicio, mes, ano, "vendas_internas", 20, vendedor),
+    getTopClientes(mesInicio, mes, ano, "vendas_internas_2", 20, vendedor),
+    getTopClientes(mesInicio, mes, ano, "vendas_internas_total", 20, vendedor),
     getClientesB2BList(),
   ]);
 
@@ -77,6 +81,8 @@ export default async function AdminBIPage({ searchParams }: PageProps) {
       produtosTop={produtosTop}
       topGeral={topGeral}
       topInternas={topInternas}
+      topInternas2={topInternas2}
+      topInternasTotal={topInternasTotal}
       clientesB2B={clientesB2B}
       defaultMes={mes}
       defaultAno={ano}
