@@ -679,7 +679,11 @@ async function _fetchProdutosEvolucao(
 // 7. Top 20 clientes (Fase 6)
 // ---------------------------------------------------------------------------
 
-export type CanalTopClientes = "geral" | "vendas_internas";
+export type CanalTopClientes =
+  | "geral"
+  | "vendas_internas"
+  | "vendas_internas_2"
+  | "vendas_internas_total";
 
 export async function getTopClientes(
   mesInicio: number,
@@ -707,9 +711,16 @@ async function _fetchTopClientes(
   const { start, end } = buildDateRange(mesInicio, mesFim, ano);
 
   const pedidos = await fetchPedidosB2B(start, end, vendedor);
-  const filtered = canal === "vendas_internas"
-    ? pedidos.filter((p) => p.vendedor === "Vendas Internas")
-    : pedidos;
+  let filtered: typeof pedidos;
+  if (canal === "vendas_internas") {
+    filtered = pedidos.filter((p) => p.vendedor === "Vendas Internas");
+  } else if (canal === "vendas_internas_2") {
+    filtered = pedidos.filter((p) => p.vendedor === "Vendas Internas 2");
+  } else if (canal === "vendas_internas_total") {
+    filtered = pedidos.filter((p) => tipoVendedor(p.vendedor) === "vendas_internas");
+  } else {
+    filtered = pedidos;
+  }
 
   type Agg = { vendedorUlt: string; total: number; count: number; lastDate: string };
   const groups: Record<string, Agg> = {};

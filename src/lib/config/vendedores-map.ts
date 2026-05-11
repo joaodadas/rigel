@@ -27,6 +27,7 @@ export const VENDEDOR_ID_TO_CANONICAL: Record<number, string> = {
   230019: "Santos Maia",
   230020: "Sérgio",
   207727: "Vendas Internas",
+  266629: "Vendas Internas 2",
 }
 
 // ---------------------------------------------------------------------------
@@ -55,6 +56,10 @@ const MARKETPLACE_NAME_PATTERNS = [
 
 const NAME_TO_CANONICAL: Record<string, string> = {
   // Vendas internas (várias variações)
+  "VENDAS INTERNAS 2": "Vendas Internas 2",
+  "VENDAS INTERNA 2": "Vendas Internas 2",
+  "VI 2": "Vendas Internas 2",
+  "VI-2": "Vendas Internas 2",
   "VENDAS INTERNAS": "Vendas Internas",
   "VENDAS INTERNA": "Vendas Internas",
   "VENDAS": "Vendas Internas",
@@ -126,7 +131,8 @@ export function resolveVendedor(
 
   if (NAME_TO_CANONICAL[upper]) return NAME_TO_CANONICAL[upper]
 
-  // Tenta match parcial — se começar com VENDAS INTERNAS algo
+  // Tenta match parcial — checa "2" antes para não cair no canonical antigo
+  if (upper.startsWith("VENDAS INTERNAS 2")) return "Vendas Internas 2"
   if (upper.startsWith("VENDAS INTERNAS")) return "Vendas Internas"
 
   return null // desconhecido — não conta no BI

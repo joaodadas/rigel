@@ -93,6 +93,8 @@ interface ComercialDashboardProps {
   produtosTop: ProdutosTopEvolucao;
   topGeral: TopCliente[];
   topInternas: TopCliente[];
+  topInternas2: TopCliente[];
+  topInternasTotal: TopCliente[];
   clientesB2B: ClienteB2BListItem[];
   defaultMes: number;
   defaultAno: number;
@@ -470,6 +472,8 @@ export function ComercialDashboard({
   produtosTop,
   topGeral,
   topInternas,
+  topInternas2,
+  topInternasTotal,
   clientesB2B,
   defaultMes,
   defaultAno,
@@ -504,7 +508,9 @@ export function ComercialDashboard({
 
   const [faixaInatividade, setFaixaInatividade] = useState("todas");
   const [buscaInativo, setBuscaInativo] = useState("");
-  const [topTab, setTopTab] = useState<"geral" | "internas">("geral");
+  const [topTab, setTopTab] = useState<
+    "geral" | "internas" | "internas2" | "internas_total"
+  >("geral");
   const [produtoSelecionado, setProdutoSelecionado] = useState<string>("_top");
   const [demoClienteId, setDemoClienteId] = useState<string | null>(null);
   const [demoData, setDemoData] = useState<DemonstrativoCliente | null>(null);
@@ -856,7 +862,14 @@ export function ComercialDashboard({
   ];
 
   // --------------------------------------------------------- Top Clientes
-  const topData = topTab === "geral" ? topGeral : topInternas;
+  const topData =
+    topTab === "geral"
+      ? topGeral
+      : topTab === "internas"
+        ? topInternas
+        : topTab === "internas2"
+          ? topInternas2
+          : topInternasTotal;
 
   return (
     <div className="space-y-8 relative">
@@ -1014,11 +1027,12 @@ export function ComercialDashboard({
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-lg font-semibold">Vendas Internas</CardTitle>
-              <CardDescription>Aline (VI-01) + Fátima (VI-02) — meta combinada</CardDescription>
+              <CardDescription>Aline (VI-01) + Fátima (VI-02) — metas individuais</CardDescription>
               <p className="mt-2 text-xs text-muted-foreground">
-                <span className="font-medium text-foreground/80">Nota:</span> a VHSys não diferencia
-                VI-01 e VI-02 nos pedidos, então ambas aparecem agregadas. A meta exibida soma
-                R$ 3.000.000 (Aline) + R$ 646.425 (Fátima) = R$ 3.646.425/ano.
+                <span className="font-medium text-foreground/80">Nota:</span> desde 16/04/2026 a VHSys
+                separou os cadastros: &ldquo;Vendas Internas&rdquo; (id 207727, Aline, R$ 3.000.000/ano)
+                e &ldquo;Vendas Internas 2&rdquo; (id 266629, Fátima, R$ 646.425/ano) — total combinado
+                R$ 3.646.425/ano.
               </p>
             </div>
             <Button
@@ -1134,7 +1148,7 @@ export function ComercialDashboard({
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="inline-flex rounded-md border border-border/50 p-0.5">
+          <div className="inline-flex flex-wrap rounded-md border border-border/50 p-0.5">
             <button
               onClick={() => setTopTab("geral")}
               className={`px-3 py-1.5 text-xs font-medium rounded-sm transition ${
@@ -1150,6 +1164,22 @@ export function ComercialDashboard({
               }`}
             >
               Vendas Internas
+            </button>
+            <button
+              onClick={() => setTopTab("internas2")}
+              className={`px-3 py-1.5 text-xs font-medium rounded-sm transition ${
+                topTab === "internas2" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Vendas Internas 2
+            </button>
+            <button
+              onClick={() => setTopTab("internas_total")}
+              className={`px-3 py-1.5 text-xs font-medium rounded-sm transition ${
+                topTab === "internas_total" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Vendas Internas Total
             </button>
           </div>
           <TopClientesTable rows={topData} />
