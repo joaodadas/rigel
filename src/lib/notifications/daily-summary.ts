@@ -11,6 +11,11 @@ const VALOR_PAD = 15; // "R$ 9.999.999,99" cabe sem quebrar o alinhamento das co
 const QTD_PAD = 3;
 const FORNECEDOR_MAX = 30;
 
+// Zero-width space inserido em dígitos para quebrar a auto-linkificação
+// no WhatsApp mobile (Android/iOS detectam valores monetários como R$ X.XXX,XX
+// e os renderizam em azul/sublinhado). Invisível no Web e no mobile.
+const ZWSP = "​";
+
 // ---------------------------------------------------------------------------
 // Helpers de formatação
 // ---------------------------------------------------------------------------
@@ -32,12 +37,12 @@ function fmtDateLong(iso: string): string {
     weekday: "long",
     timeZone: "UTC",
   }).format(date);
-  return `${d}/${m}/${y} (${weekday})`;
+  return `${d}${ZWSP}/${m}${ZWSP}/${y} (${weekday})`;
 }
 
 function fmtDateShort(iso: string): string {
   const [, m, d] = iso.split("-");
-  return `${d}/${m}`;
+  return `${d}${ZWSP}/${m}`;
 }
 
 function truncate(s: string, max: number): string {
@@ -110,6 +115,7 @@ function build(
   linhas.push(
     `*Total:* ${fmtBRL(data.vendas.totalValor)} (${data.vendas.totalPedidos} pedidos)`,
   );
+  linhas.push(`_Status considerado: Atendido_`);
   linhas.push("");
   for (const c of data.vendas.porCanal) linhas.push(linhaCanal(c));
   linhas.push("");
@@ -148,12 +154,27 @@ function build(
   return linhas.join("\n");
 }
 
+/**
+ * Quebra padrões que o WhatsApp mobile auto-linkifica em azul/sublinhado:
+ *   - "$" recebe ZWSP imediatamente após (quebra "R$ X" como moeda).
+ *   - dígito-separador-dígito recebe ZWSP entre o dígito e o separador
+ *     (quebra "1.234,56" como número).
+ * ZWSP (U+200B) é invisível em qualquer renderer (Web e mobile). Aplica
+ * num passe final para evitar interferir nas larguras de padStart usadas
+ * no alinhamento das colunas.
+ */
+function neutralizarLinkificacao(s: string): string {
+  return s
+    .replace(/\$/g, `$${ZWSP}`)
+    .replace(/(\d)([.,])(\d)/g, `$1${ZWSP}$2$3`);
+}
+
 export function formatDailySummary(data: DailySummaryData): string {
   const completa = build(data, "completo");
-  if (completa.length <= MAX_LEN) return completa;
+  if (completa.length <= MAX_LEN) return neutralizarLinkificacao(completa);
 
   const compacta1 = build(data, "compactarProx7");
-  if (compacta1.length <= MAX_LEN) return compacta1;
+  if (compacta1.length <= MAX_LEN) return neutralizarLinkificacao(compacta1);
 
-  return build(data, "compactarProx7EHoje");
+  return neutralizarLinkificacao(build(data, "compactarProx7EHoje"));
 }
