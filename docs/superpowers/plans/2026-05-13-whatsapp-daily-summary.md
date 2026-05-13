@@ -363,6 +363,7 @@ async function fetchContasPagar(hoje: string): Promise<{
       .select("nome_conta, nome_fornecedor, vencimento_pag, valor_pag")
       .eq("lixeira", "Nao")
       .eq("liquidado_pag", "Nao")
+      .gte("vencimento_pag", "2000-01-01") // filtra sentinelas históricas do VHSys
       .lte("vencimento_pag", limiteSuperior)
       .order("vencimento_pag", { ascending: true })
       .range(from, to),
@@ -562,11 +563,6 @@ function linhaCanal(c: VendasCanal): string {
   return `• ${nome} ${valor} (${qtd})`;
 }
 
-function linhaContaAtrasada(c: ContaPagarItem): string {
-  const nome = truncate(c.fornecedor, FORNECEDOR_MAX);
-  return `• ${nome} — ${fmtBRL(c.valor)} (${c.diasAtraso}d atraso)`;
-}
-
 function linhaContaHoje(c: ContaPagarItem): string {
   const nome = truncate(c.fornecedor, FORNECEDOR_MAX);
   return `• ${nome} — ${fmtBRL(c.valor)}`;
@@ -575,6 +571,12 @@ function linhaContaHoje(c: ContaPagarItem): string {
 function linhaContaProxima(c: ContaPagarItem): string {
   const nome = truncate(c.fornecedor, FORNECEDOR_MAX);
   return `• ${nome} — ${fmtBRL(c.valor)} (${fmtDateShort(c.vencimento)})`;
+}
+
+function blocoAtrasadas(bloco: ContasPagarBloco): string {
+  // Sempre só o total — sem lista, mesmo quando qtd > 0.
+  const sufixo = bloco.qtd === 1 ? "conta" : "contas";
+  return `🔴 *Em atraso* — ${fmtBRL(bloco.total)} (${bloco.qtd} ${sufixo})`;
 }
 
 function blocoContas(
@@ -604,7 +606,7 @@ function blocoContasCompacto(
 
 function build(
   data: DailySummaryData,
-  modo: "completo" | "compactarProx7" | "compactarProx7EAtraso",
+  modo: "completo" | "compactarProx7" | "compactarProx7EHoje",
 ): string {
   const linhas: string[] = [];
   linhas.push("📊 *Resumo Diário Rigel*");
@@ -624,19 +626,19 @@ function build(
   linhas.push("━━━━━━━━━━━━━━━━━━━━━━");
   linhas.push("");
 
-  if (modo === "compactarProx7EAtraso") {
-    linhas.push(blocoContasCompacto("🔴", "Em atraso", data.contasPagar.atrasadas));
+  // Em atraso: sempre só agregado.
+  linhas.push(blocoAtrasadas(data.contasPagar.atrasadas));
+  linhas.push("");
+
+  if (modo === "compactarProx7EHoje") {
+    linhas.push(blocoContasCompacto("🟡", "Vence hoje", data.contasPagar.venceHoje));
   } else {
     linhas.push(
-      ...blocoContas("🔴", "Em atraso", data.contasPagar.atrasadas, linhaContaAtrasada),
+      ...blocoContas("🟡", "Vence hoje", data.contasPagar.venceHoje, linhaContaHoje),
     );
   }
   linhas.push("");
-  linhas.push(
-    ...blocoContas("🟡", "Vence hoje", data.contasPagar.venceHoje, linhaContaHoje),
-  );
-  linhas.push("");
-  if (modo === "compactarProx7" || modo === "compactarProx7EAtraso") {
+  if (modo === "compactarProx7" || modo === "compactarProx7EHoje") {
     linhas.push(
       blocoContasCompacto("🔵", "Próximos 7 dias", data.contasPagar.proximos7Dias),
     );
@@ -661,7 +663,7 @@ export function formatDailySummary(data: DailySummaryData): string {
   const compacta1 = build(data, "compactarProx7");
   if (compacta1.length <= MAX_LEN) return compacta1;
 
-  return build(data, "compactarProx7EAtraso");
+  return build(data, "compactarProx7EHoje");
 }
 ```
 
@@ -803,9 +805,9 @@ Expected:
 - Imprime 3 mensagens (normal / tudo zero / extremo).
 - Cada mensagem termina com `length: N chars (max 4096)`.
 - Verificar visualmente:
-  - **Fixture 1:** linhas de canal alinhadas; emojis e bullets OK; fornecedor longo da "proximos7Dias" foi truncado com `…`; blocos de contas com 3+2+2 itens.
-  - **Fixture 2:** mostra `_(nenhuma)_` nos três blocos de contas; canais aparecem todos com `R$ 0,00 ( 0)`.
-  - **Fixture 3:** o bloco "Próximos 7 dias" aparece com `"lista omitida por tamanho"` (ou "Em atraso" também, dependendo do tamanho). Mensagem total ≤ 4096.
+  - **Fixture 1:** linhas de canal alinhadas; emojis e bullets OK; fornecedor longo da "proximos7Dias" foi truncado com `…`. "Em atraso" mostra **só o total agregado** (sem lista de itens). "Vence hoje" lista 2 itens; "Próximos 7 dias" lista 2 itens.
+  - **Fixture 2:** "Em atraso" mostra `R$ 0,00 (0 contas)`; "Vence hoje" e "Próximos 7 dias" mostram `_(nenhuma)_`; canais aparecem todos com `R$ 0,00 ( 0)`.
+  - **Fixture 3:** "Em atraso" sempre só agregado (independente de fallback). "Próximos 7 dias" aparece com `"lista omitida por tamanho"` se >4000. Mensagem total ≤ 4096.
 - Console final: `✓ Todas as fixtures couberam no limite.`
 
 - [ ] **Step 4: Commit**

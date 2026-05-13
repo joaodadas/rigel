@@ -175,6 +175,7 @@ supabase.from("contas_pagar")
   .select("nome_conta, nome_fornecedor, vencimento_pag, valor_pag")
   .eq("lixeira", "Nao")
   .eq("liquidado_pag", "Nao")
+  .gte("vencimento_pag", "2000-01-01")  // filtra sentinelas históricas do VHSys (1899-XX)
   .lte("vencimento_pag", hojePlus7)
   .order("vencimento_pag", { ascending: true })
 ```
@@ -228,10 +229,7 @@ _Referência: 12/05/2026 (terça)_
 💸 *CONTAS A PAGAR*
 ━━━━━━━━━━━━━━━━━━━━━━
 
-🔴 *Em atraso* — R$ 12.450,00 (3)
-• Fornecedor X — R$ 8.200,00 (12d atraso)
-• Fornecedor Y — R$ 3.100,00 (5d atraso)
-• Fornecedor Z — R$ 1.150,00 (2d atraso)
+🔴 *Em atraso* — R$ 3.001.161,48 (884 contas)
 
 🟡 *Vence hoje* — R$ 5.800,00 (2)
 • Fornecedor A — R$ 3.500,00
@@ -251,11 +249,13 @@ _Referência: 12/05/2026 (terça)_
 - Fornecedor: trunca em 30 chars com `…`.
 - Bloco vazio: `_(nenhuma)_` em vez de lista vazia.
 
-**Limite de 4096 chars do WhatsApp:**
+**Bloco "Em atraso" mostra apenas total agregado (sem lista de itens).** Decisão tomada após inspeção da base real: ~884 contas em atraso (~R$ 3M) tornam qualquer listagem inviável; o agregado já cumpre o papel de alerta. Itens ainda são coletados pela query (preservados para diagnóstico via script), mas não renderizados no WhatsApp.
+
+**Limite de 4096 chars do WhatsApp** (para "Vence hoje" e "Próximos 7 dias"):
 1. Monta mensagem completa.
 2. Se `length > 4000` (margem de 96), entra modo compacto:
    - Substitui lista de "Próximos 7 dias" por `🔵 Próximos 7 dias — R$ X (Y contas) — lista omitida por tamanho`.
-3. Se ainda passar de 4000 (patológico): trunca "Em atraso" igual.
+3. Se ainda passar de 4000 (patológico): "Vence hoje" recebe o mesmo tratamento.
 
 Retorna 1 string. Sem dividir em múltiplas mensagens.
 
