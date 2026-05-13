@@ -44,6 +44,18 @@ export const MARKETPLACE_VENDEDOR_IDS = new Set<number>([
   239225, // SITE RIGEL
 ])
 
+// Mapeia o id do "vendedor" de marketplace para o nome de canal exibido no relatório.
+// Mantém o nome exato cadastrado no VHSys (uppercase).
+export const VENDEDOR_ID_TO_MARKETPLACE_NAME: Record<number, string> = {
+  248324: "MERCADOFULL",
+  207185: "MERCADOLIVRE",
+  230194: "SHOPEE",
+  262101: "SHOPEEFULL",
+  262945: "SHEIN",
+  212745: "SITE OPTA SAUDE",
+  239225: "SITE RIGEL",
+}
+
 // Nomes textuais que indicam canal e-commerce (quando id = 0)
 const MARKETPLACE_NAME_PATTERNS = [
   "MERCADO", "SHOPEE", "SHOPPE", "SHEIN", "FULL", "AMERICANAS", "SOPEE",
