@@ -89,7 +89,7 @@ function blocoContasCompacto(
   titulo: string,
   bloco: ContasPagarBloco,
 ): string {
-  return `${emoji} *${titulo}* — ${fmtBRL(bloco.total)} (${bloco.qtd} ${pluralContas(bloco.qtd)}) — lista omitida por tamanho`;
+  return `${emoji} *${titulo}* — ${fmtBRL(bloco.total)} (${bloco.qtd} ${pluralContas(bloco.qtd)})`;
 }
 
 // ---------------------------------------------------------------------------
