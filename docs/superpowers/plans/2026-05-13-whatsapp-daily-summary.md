@@ -141,7 +141,7 @@ export async function sendWhatsAppText(text: string): Promise<void> {
 ```ts
 // Envia uma mensagem de teste pelo WhatsApp via Evolution.
 // Confirma que envs estão certas e o endpoint funciona.
-// USO: npx tsx -r dotenv/config scripts/smoke-evolution.ts dotenv_config_path=.env.local
+// USO: npx tsx --env-file=.env.local scripts/smoke-evolution.ts
 
 import { sendWhatsAppText } from "../src/lib/evolution/client";
 
@@ -166,7 +166,7 @@ main().catch((err) => {
 
 Run:
 ```powershell
-npx tsx -r dotenv/config scripts/smoke-evolution.ts dotenv_config_path=.env.local
+npx tsx --env-file=.env.local scripts/smoke-evolution.ts
 ```
 Expected:
 - Console: `✓ Enviado com sucesso.`
@@ -442,7 +442,7 @@ export async function fetchDailySummary(
 
 ```ts
 // Chama fetchDailySummary contra dados reais e imprime o resultado para inspeção.
-// USO: npx tsx -r dotenv/config scripts/test-daily-summary-data.ts dotenv_config_path=.env.local
+// USO: npx tsx --env-file=.env.local scripts/test-daily-summary-data.ts
 
 import { fetchDailySummary } from "../src/lib/queries/daily-summary";
 
@@ -482,7 +482,7 @@ main().catch((err) => {
 
 Run:
 ```powershell
-npx tsx -r dotenv/config scripts/test-daily-summary-data.ts dotenv_config_path=.env.local
+npx tsx --env-file=.env.local scripts/test-daily-summary-data.ts
 ```
 Expected:
 - Imprime JSON completo com `dataReferencia` correspondendo a ontem em BRT (ex.: hoje 2026-05-13 → `dataReferencia` = `2026-05-12`).
@@ -982,8 +982,8 @@ Arquivo está fora do repo. Apenas confirmar visualmente que a edição foi salv
 Run os três scripts em sequência:
 ```powershell
 npx tsx scripts/test-daily-summary-format.ts
-npx tsx -r dotenv/config scripts/test-daily-summary-data.ts dotenv_config_path=.env.local
-npx tsx -r dotenv/config scripts/smoke-evolution.ts dotenv_config_path=.env.local
+npx tsx --env-file=.env.local scripts/test-daily-summary-data.ts
+npx tsx --env-file=.env.local scripts/smoke-evolution.ts
 ```
 Expected: cada um termina com `✓ ...` e exit code 0.
 
