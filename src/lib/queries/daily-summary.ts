@@ -169,6 +169,7 @@ async function fetchContasPagar(hoje: string): Promise<{
       .select("nome_conta, nome_fornecedor, vencimento_pag, valor_pag")
       .eq("lixeira", "Nao")
       .eq("liquidado_pag", "Nao")
+      .gte("vencimento_pag", "2000-01-01")
       .lte("vencimento_pag", limiteSuperior)
       .order("vencimento_pag", { ascending: true })
       .range(from, to),
