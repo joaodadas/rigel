@@ -105,6 +105,19 @@ const fixtureExtremo: DailySummaryData = {
   },
 };
 
+// Força o terceiro nível de fallback (compactarProx7EHoje): ambos venceHoje
+// e proximos7Dias precisam ter itens suficientes para estourar 4000 chars
+// mesmo após compactar só prox7d.
+const fixturePatologico: DailySummaryData = {
+  dataReferencia: "2026-05-12",
+  vendas: fixtureNormal.vendas,
+  contasPagar: {
+    atrasadas: gerarContas(100, "2026-04-15", true),
+    venceHoje: gerarContas(100, "2026-05-12", false),
+    proximos7Dias: gerarContas(100, "2026-05-18", false),
+  },
+};
+
 function runFixture(name: string, data: DailySummaryData, maxLen = 4096) {
   console.log(`\n========== ${name} ==========`);
   const out = formatDailySummary(data);
@@ -119,5 +132,6 @@ function runFixture(name: string, data: DailySummaryData, maxLen = 4096) {
 runFixture("FIXTURE 1 — normal", fixtureNormal);
 runFixture("FIXTURE 2 — tudo zero (domingo)", fixtureTudoZero);
 runFixture("FIXTURE 3 — extremo (60 atrasadas + 120 prox 7d)", fixtureExtremo);
+runFixture("FIXTURE 4 — patológico (100/100/100, força compactar venceHoje)", fixturePatologico);
 
 console.log("\n✓ Todas as fixtures couberam no limite.");

@@ -7,7 +7,7 @@ import type {
 
 const MAX_LEN = 4000; // margem de 96 chars sobre o limite de 4096 do WhatsApp
 const CANAL_PAD = 18;
-const VALOR_PAD = 12;
+const VALOR_PAD = 15; // "R$ 9.999.999,99" cabe sem quebrar o alinhamento das colunas
 const QTD_PAD = 3;
 const FORNECEDOR_MAX = 30;
 
@@ -62,10 +62,13 @@ function linhaContaProxima(c: ContaPagarItem): string {
   return `• ${nome} — ${fmtBRL(c.valor)} (${fmtDateShort(c.vencimento)})`;
 }
 
+function pluralContas(n: number): string {
+  return n === 1 ? "conta" : "contas";
+}
+
 function blocoAtrasadas(bloco: ContasPagarBloco): string {
   // Sempre só o total — sem lista, mesmo quando qtd > 0.
-  const sufixo = bloco.qtd === 1 ? "conta" : "contas";
-  return `🔴 *Em atraso* — ${fmtBRL(bloco.total)} (${bloco.qtd} ${sufixo})`;
+  return `🔴 *Em atraso* — ${fmtBRL(bloco.total)} (${bloco.qtd} ${pluralContas(bloco.qtd)})`;
 }
 
 function blocoContas(
@@ -86,7 +89,7 @@ function blocoContasCompacto(
   titulo: string,
   bloco: ContasPagarBloco,
 ): string {
-  return `${emoji} *${titulo}* — ${fmtBRL(bloco.total)} (${bloco.qtd} contas) — lista omitida por tamanho`;
+  return `${emoji} *${titulo}* — ${fmtBRL(bloco.total)} (${bloco.qtd} ${pluralContas(bloco.qtd)}) — lista omitida por tamanho`;
 }
 
 // ---------------------------------------------------------------------------
