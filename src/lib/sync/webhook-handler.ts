@@ -27,18 +27,29 @@ export async function handleVHSysWebhook(payload: WebhookEvent) {
     return { handled: false };
   }
 
-  const record = { ...payload.data, synced_at: new Date().toISOString() };
+  // Webhooks atualmente só são recebidos da Rigel Fabricante (a única conta com webhook
+  // potencialmente configurado). Quando webhook multi-tenant for habilitado, esta empresa
+  // deve vir do payload ou do path da URL (/api/webhooks/vhsys/[empresa]).
+  const empresa = "rigel_fabricante" as const;
+  const writesEmpresaColumn = mapping.table === "contas_pagar";
+
+  const record = {
+    ...payload.data,
+    ...(writesEmpresaColumn ? { empresa } : {}),
+    synced_at: new Date().toISOString(),
+  };
 
   if (action === "delete") {
     const pkValue = payload.data[mapping.pk];
-    await supabase
+    let query = supabase
       .from(mapping.table)
       .update({ lixeira: "Sim", synced_at: new Date().toISOString() })
       .eq(mapping.pk, pkValue);
+    if (writesEmpresaColumn) query = query.eq("empresa", empresa);
+    await query;
   } else {
-    await supabase
-      .from(mapping.table)
-      .upsert(record, { onConflict: mapping.pk });
+    const onConflict = writesEmpresaColumn ? `empresa,${mapping.pk}` : mapping.pk;
+    await supabase.from(mapping.table).upsert(record, { onConflict });
   }
 
   // Update ultima_atividade for related client

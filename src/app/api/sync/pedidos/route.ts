@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   try {
     while (offset < total) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res = await vhsysGet<any>(ENDPOINTS.pedidos, {
+      const res = await vhsysGet<any>("rigel_fabricante", ENDPOINTS.pedidos, {
         limit: String(MAX_PAGE_SIZE),
         offset: String(offset),
       });

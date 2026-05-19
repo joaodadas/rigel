@@ -1,9 +1,9 @@
+// src/lib/sync/initial.ts
 import { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServer } from "@/lib/supabase/client";
 import { vhsysGet } from "@/lib/vhsys/client";
 import { ENDPOINTS, MAX_PAGE_SIZE } from "@/lib/vhsys/endpoints";
-import { cacheSet, CACHE_KEYS } from "@/lib/redis/client";
-import type { VHSysResponse } from "@/lib/vhsys/types";
+import type { EmpresaSlug } from "@/lib/empresas";
 
 // Only keep fields that exist in our Supabase tables
 export const TABLE_FIELDS: Record<string, string[]> = {
@@ -30,24 +30,33 @@ export function pickFields(item: Record<string, unknown>, fields: string[]): Rec
   return result;
 }
 
+// Tabelas que já têm PK composta (empresa, <pk>) precisam de onConflict composto.
+const TABLES_WITH_EMPRESA_PK: Set<string> = new Set(["contas_pagar"]);
+
+function onConflictFor(entity: string, primaryKey: string): string {
+  return TABLES_WITH_EMPRESA_PK.has(entity) ? `empresa,${primaryKey}` : primaryKey;
+}
+
 // Stream sync: fetch page -> upsert -> next page (no memory accumulation)
 async function syncEntity(
   supabase: SupabaseClient,
+  empresa: EmpresaSlug,
   entity: string,
   endpoint: string,
-  primaryKey: string
+  primaryKey: string,
 ): Promise<number> {
   const start = Date.now();
   const fields = TABLE_FIELDS[entity];
   let offset = 0;
   let total = Infinity;
   let synced = 0;
+  const writesEmpresaColumn = TABLES_WITH_EMPRESA_PK.has(entity);
 
-  console.log(`[sync] Starting ${entity}...`);
+  console.log(`[sync:${empresa}] Starting ${entity}...`);
 
   while (offset < total) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const res = await vhsysGet<any>(endpoint, {
+    const res = await vhsysGet<any>(empresa, endpoint, {
       limit: String(MAX_PAGE_SIZE),
       offset: String(offset),
       lixeira: "Nao",
@@ -72,6 +81,7 @@ async function syncEntity(
 
     const batch = deduped.map((item) => ({
       ...(fields ? pickFields(item, fields) : item),
+      ...(writesEmpresaColumn ? { empresa } : {}),
       synced_at: new Date().toISOString(),
     }));
 
@@ -80,7 +90,7 @@ async function syncEntity(
     for (let attempt = 0; attempt < 3; attempt++) {
       const { error } = await supabase
         .from(entity)
-        .upsert(batch, { onConflict: primaryKey });
+        .upsert(batch, { onConflict: onConflictFor(entity, primaryKey) });
 
       if (!error) {
         lastError = null;
@@ -90,35 +100,35 @@ async function syncEntity(
       lastError = error;
       const msg = typeof error === "object" && error !== null && "message" in error ? (error as { message: string }).message : String(error);
       if (msg.includes("fetch failed") || msg.includes("ECONNRESET")) {
-        console.warn(`[sync] Retry ${attempt + 1}/3 for ${entity} at offset ${offset}`);
+        console.warn(`[sync:${empresa}] Retry ${attempt + 1}/3 for ${entity} at offset ${offset}`);
         await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
         continue;
       }
       // Non-retryable error
-      console.error(`[sync] Error upserting ${entity} at offset ${offset}:`, error);
+      console.error(`[sync:${empresa}] Error upserting ${entity} at offset ${offset}:`, error);
       throw error;
     }
 
     if (lastError) {
-      console.error(`[sync] Failed after 3 retries ${entity} at offset ${offset}:`, lastError);
+      console.error(`[sync:${empresa}] Failed after 3 retries ${entity} at offset ${offset}:`, lastError);
       throw lastError;
     }
 
     synced += items.length;
     offset += MAX_PAGE_SIZE;
-    console.log(`[sync] ${entity}: ${synced}/${total} synced`);
+    console.log(`[sync:${empresa}] ${entity}: ${synced}/${total} synced`);
 
-    // Small delay to avoid rate limiting
     if (offset < total) {
       await new Promise((r) => setTimeout(r, 100));
     }
   }
 
   const duration = Date.now() - start;
-  console.log(`[sync] ${entity} done: ${synced} records in ${duration}ms`);
+  console.log(`[sync:${empresa}] ${entity} done: ${synced} records in ${duration}ms`);
 
   await supabase.from("sync_log").insert({
     entity,
+    empresa,
     records_synced: synced,
     status: "success",
     duration_ms: duration,
@@ -127,38 +137,40 @@ async function syncEntity(
   return synced;
 }
 
+/** Sync inicial completo da Rigel Fabricante — comportamento legado preservado. */
 export async function runInitialSync(): Promise<Record<string, number>> {
   const supabase = createSupabaseServer();
+  const empresa: EmpresaSlug = "rigel_fabricante";
   const results: Record<string, number> = {};
 
   try {
     // Group 1: No FK dependencies - run in parallel
-    console.log("[sync] Group 1: vendedores + clientes + produtos (parallel)");
+    console.log(`[sync:${empresa}] Group 1: vendedores + clientes + produtos (parallel)`);
     const [vendedores, clientes, produtos] = await Promise.all([
-      syncEntity(supabase, "vendedores", ENDPOINTS.vendedores, "id_vendedor"),
-      syncEntity(supabase, "clientes", ENDPOINTS.clientes, "id_cliente"),
-      syncEntity(supabase, "produtos", ENDPOINTS.produtos, "id_produto"),
+      syncEntity(supabase, empresa, "vendedores", ENDPOINTS.vendedores, "id_vendedor"),
+      syncEntity(supabase, empresa, "clientes", ENDPOINTS.clientes, "id_cliente"),
+      syncEntity(supabase, empresa, "produtos", ENDPOINTS.produtos, "id_produto"),
     ]);
     results.vendedores = vendedores;
     results.clientes = clientes;
     results.produtos = produtos;
 
     // Group 2: Depend on clientes - run in parallel
-    console.log("[sync] Group 2: pedidos + contas_pagar + contas_receber (parallel)");
+    console.log(`[sync:${empresa}] Group 2: pedidos + contas_pagar + contas_receber (parallel)`);
     const [pedidos, contasPagar, contasReceber] = await Promise.all([
-      syncEntity(supabase, "pedidos", ENDPOINTS.pedidos, "id_pedido"),
-      syncEntity(supabase, "contas_pagar", ENDPOINTS.contasPagar, "id_conta_pag"),
-      syncEntity(supabase, "contas_receber", ENDPOINTS.contasReceber, "id_conta_rec"),
+      syncEntity(supabase, empresa, "pedidos", ENDPOINTS.pedidos, "id_pedido"),
+      syncEntity(supabase, empresa, "contas_pagar", ENDPOINTS.contasPagar, "id_conta_pag"),
+      syncEntity(supabase, empresa, "contas_receber", ENDPOINTS.contasReceber, "id_conta_rec"),
     ]);
     results.pedidos = pedidos;
     results.contas_pagar = contasPagar;
     results.contas_receber = contasReceber;
 
-    console.log("[sync] All entities synced:", results);
+    console.log(`[sync:${empresa}] All entities synced:`, results);
   } catch (error) {
-    // Log the failure to sync_log
     await supabase.from("sync_log").insert({
       entity: "initial_sync",
+      empresa,
       records_synced: 0,
       status: "error",
       error_message: String(error),
@@ -167,4 +179,24 @@ export async function runInitialSync(): Promise<Record<string, number>> {
   }
 
   return results;
+}
+
+/** Sync inicial apenas de contas_pagar para uma empresa específica.
+ *  Usado uma vez por empresa nova (Rigel Medical, HD Slim) no rollout. */
+export async function runInitialContasPagarSync(
+  empresa: EmpresaSlug,
+): Promise<{ synced: number; durationMs: number }> {
+  const supabase = createSupabaseServer();
+  const start = Date.now();
+  console.log(`[sync:${empresa}] Initial contas_pagar sync starting...`);
+  const synced = await syncEntity(
+    supabase,
+    empresa,
+    "contas_pagar",
+    ENDPOINTS.contasPagar,
+    "id_conta_pag",
+  );
+  const durationMs = Date.now() - start;
+  console.log(`[sync:${empresa}] Initial contas_pagar done: ${synced} records in ${durationMs}ms`);
+  return { synced, durationMs };
 }
