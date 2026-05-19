@@ -41,7 +41,7 @@ export function ContasPagarTable({
   // Esconde a coluna "Empresa" quando o filtro está restrito a uma única empresa.
   const columns = useMemo(
     () => empresas.length === 1
-      ? allColumns.filter((c) => (c as { accessorKey?: string }).accessorKey !== "empresa")
+      ? allColumns.filter((c) => !("accessorKey" in c) || c.accessorKey !== "empresa")
       : allColumns,
     [empresas.length],
   )
