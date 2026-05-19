@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import { EMPRESA_SLUGS } from "@/lib/empresas";
 
 let _redis: Redis | null = null;
 
@@ -188,14 +189,10 @@ export async function invalidateAllCaches(): Promise<void> {
   }
 
   // Listing keys for first 5 pages of each entity.
-  // Para contas-pagar, invalida todas as variações de empresa (3 isoladas + "todos").
+  // Para contas-pagar (multi-empresa), invalida o cache "todos" + cada empresa isolada.
+  // Demais entidades caem no fallback [[]] (uma única variante, sufixo "_all").
   const EMPRESA_VARIANTS_FOR_LISTS: Record<string, readonly (readonly string[])[]> = {
-    "contas-pagar": [
-      [], // "todos"
-      ["rigel_fabricante"],
-      ["rigel_medical"],
-      ["hdslim"],
-    ],
+    "contas-pagar": [[], ...EMPRESA_SLUGS.map((s) => [s] as const)],
   };
 
   for (const entity of LIST_ENTITIES) {
