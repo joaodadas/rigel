@@ -118,4 +118,16 @@ export const columns: ColumnDef<ContaPagarRow>[] = [
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
   },
+  {
+    accessorKey: "empresa",
+    header: () => <span className="text-xs uppercase tracking-wider font-medium">Empresa</span>,
+    cell: ({ row }) => {
+      const slug = row.getValue("empresa") as string
+      const nome =
+        slug === "rigel_fabricante" ? "Rigel Fabricante" :
+        slug === "rigel_medical" ? "Rigel Medical" :
+        slug === "hdslim" ? "HD Slim" : slug
+      return <span className="text-xs text-muted-foreground whitespace-nowrap">{nome}</span>
+    },
+  },
 ]
