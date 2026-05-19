@@ -1,5 +1,6 @@
 import { createSupabaseServer } from "@/lib/supabase/client";
 import { invalidateAllCaches } from "@/lib/redis/client";
+import { TABLES_WITH_EMPRESA_PK, onConflictFor } from "@/lib/sync/multi-empresa";
 
 type WebhookEvent = {
   event: string;
@@ -31,7 +32,7 @@ export async function handleVHSysWebhook(payload: WebhookEvent) {
   // potencialmente configurado). Quando webhook multi-tenant for habilitado, esta empresa
   // deve vir do payload ou do path da URL (/api/webhooks/vhsys/[empresa]).
   const empresa = "rigel_fabricante" as const;
-  const writesEmpresaColumn = mapping.table === "contas_pagar";
+  const writesEmpresaColumn = TABLES_WITH_EMPRESA_PK.has(mapping.table);
 
   const record = {
     ...payload.data,
@@ -48,7 +49,7 @@ export async function handleVHSysWebhook(payload: WebhookEvent) {
     if (writesEmpresaColumn) query = query.eq("empresa", empresa);
     await query;
   } else {
-    const onConflict = writesEmpresaColumn ? `empresa,${mapping.pk}` : mapping.pk;
+    const onConflict = onConflictFor(mapping.table, mapping.pk);
     await supabase.from(mapping.table).upsert(record, { onConflict });
   }
 

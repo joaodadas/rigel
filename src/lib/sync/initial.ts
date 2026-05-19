@@ -4,6 +4,7 @@ import { createSupabaseServer } from "@/lib/supabase/client";
 import { vhsysGet } from "@/lib/vhsys/client";
 import { ENDPOINTS, MAX_PAGE_SIZE } from "@/lib/vhsys/endpoints";
 import type { EmpresaSlug } from "@/lib/empresas";
+import { TABLES_WITH_EMPRESA_PK, onConflictFor } from "@/lib/sync/multi-empresa";
 
 // Only keep fields that exist in our Supabase tables
 export const TABLE_FIELDS: Record<string, string[]> = {
@@ -28,13 +29,6 @@ export function pickFields(item: Record<string, unknown>, fields: string[]): Rec
     }
   }
   return result;
-}
-
-// Tabelas que já têm PK composta (empresa, <pk>) precisam de onConflict composto.
-const TABLES_WITH_EMPRESA_PK: Set<string> = new Set(["contas_pagar"]);
-
-function onConflictFor(entity: string, primaryKey: string): string {
-  return TABLES_WITH_EMPRESA_PK.has(entity) ? `empresa,${primaryKey}` : primaryKey;
 }
 
 // Stream sync: fetch page -> upsert -> next page (no memory accumulation)
@@ -189,14 +183,26 @@ export async function runInitialContasPagarSync(
   const supabase = createSupabaseServer();
   const start = Date.now();
   console.log(`[sync:${empresa}] Initial contas_pagar sync starting...`);
-  const synced = await syncEntity(
-    supabase,
-    empresa,
-    "contas_pagar",
-    ENDPOINTS.contasPagar,
-    "id_conta_pag",
-  );
-  const durationMs = Date.now() - start;
-  console.log(`[sync:${empresa}] Initial contas_pagar done: ${synced} records in ${durationMs}ms`);
-  return { synced, durationMs };
+  try {
+    const synced = await syncEntity(
+      supabase,
+      empresa,
+      "contas_pagar",
+      ENDPOINTS.contasPagar,
+      "id_conta_pag",
+    );
+    const durationMs = Date.now() - start;
+    console.log(`[sync:${empresa}] Initial contas_pagar done: ${synced} records in ${durationMs}ms`);
+    return { synced, durationMs };
+  } catch (error) {
+    await supabase.from("sync_log").insert({
+      entity: "contas_pagar",
+      empresa,
+      records_synced: 0,
+      status: "error",
+      error_message: String(error),
+      duration_ms: Date.now() - start,
+    });
+    throw error;
+  }
 }

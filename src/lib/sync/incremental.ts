@@ -5,6 +5,7 @@ import { ENDPOINTS } from "@/lib/vhsys/endpoints";
 import { invalidateAllCaches } from "@/lib/redis/client";
 import { TABLE_FIELDS, pickFields } from "@/lib/sync/initial";
 import { EMPRESAS, type EmpresaSlug } from "@/lib/empresas";
+import { TABLES_WITH_EMPRESA_PK, onConflictFor } from "@/lib/sync/multi-empresa";
 
 const BATCH_SIZE = 500;
 
@@ -16,12 +17,6 @@ const ENTITIES = [
   { name: "contas_pagar", endpoint: ENDPOINTS.contasPagar, pk: "id_conta_pag", dateField: "data_mod_pag" },
   { name: "contas_receber", endpoint: ENDPOINTS.contasReceber, pk: "id_conta_rec", dateField: "data_mod_rec" },
 ] as const;
-
-const TABLES_WITH_EMPRESA_PK: Set<string> = new Set(["contas_pagar"]);
-
-function onConflictFor(entity: string, primaryKey: string): string {
-  return TABLES_WITH_EMPRESA_PK.has(entity) ? `empresa,${primaryKey}` : primaryKey;
-}
 
 function entitiesForEmpresa(empresa: EmpresaSlug): typeof ENTITIES[number][] {
   // Rigel Fabricante sincroniza tudo. Demais empresas: só contas_pagar nesta entrega.
