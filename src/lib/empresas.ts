@@ -1,12 +1,13 @@
 // src/lib/empresas.ts
 // Registry estático das contas VHSys sincronizadas pelo projeto.
 // O slug entra na coluna `empresa` das tabelas multi-tenant e na querystring da UI.
+// NOTE: distinto de src/lib/dre/empresas.ts, que mapeia colunas do DRE (matriz/filial/medical/hdslim/consolidado).
 
 export const EMPRESAS = [
   { slug: "rigel_fabricante", nome: "Rigel Fabricante", envPrefix: "VHSYS" },
   { slug: "rigel_medical",    nome: "Rigel Medical",    envPrefix: "VHSYS_RIGEL_MEDICAL" },
   { slug: "hdslim",           nome: "HD Slim",          envPrefix: "VHSYS_HDSLIM" },
-] as const
+] as const;
 
 export type Empresa = (typeof EMPRESAS)[number]
 export type EmpresaSlug = Empresa["slug"]
@@ -31,8 +32,6 @@ export function getEmpresaNome(slug: EmpresaSlug): string {
  *  Vazio/undefined → array vazio (interpretado como "todos" pelas queries). */
 export function parseEmpresasParam(raw: string | undefined): EmpresaSlug[] {
   if (!raw) return []
-  return raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(isEmpresaSlug)
+  const valid = raw.split(",").map((s) => s.trim()).filter(isEmpresaSlug)
+  return Array.from(new Set(valid))
 }
