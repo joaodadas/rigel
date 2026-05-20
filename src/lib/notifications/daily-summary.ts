@@ -3,6 +3,7 @@ import type {
   VendasCanal,
   ContaPagarItem,
   ContasPagarBloco,
+  ContasPagarPorEmpresa,
 } from "@/lib/queries/daily-summary";
 
 const MAX_LEN = 4000; // margem de 96 chars sobre o limite de 4096 do WhatsApp
@@ -101,10 +102,53 @@ function blocoContasCompacto(
 // Montagem
 // ---------------------------------------------------------------------------
 
-function build(
-  data: DailySummaryData,
-  modo: "completo" | "compactarProx7" | "compactarProx7EHoje",
-): string {
+type Modo = "completo" | "compactarProx7" | "compactarProx7EHoje" | "tudoAgregado";
+
+function blocoContasPagarPorEmpresa(
+  empresaBloco: ContasPagarPorEmpresa,
+  modo: Modo,
+): string[] {
+  const linhas: string[] = [];
+  linhas.push("━━━━━━━━━━━━━━━━━━━━━━");
+  linhas.push(`💸 *CONTAS A PAGAR — ${empresaBloco.nome}*`);
+  linhas.push("━━━━━━━━━━━━━━━━━━━━━━");
+  linhas.push("");
+
+  // Em atraso: sempre só agregado.
+  linhas.push(blocoAtrasadas(empresaBloco.atrasadas));
+  linhas.push("");
+
+  if (modo === "tudoAgregado" || modo === "compactarProx7EHoje") {
+    linhas.push(blocoContasCompacto("🟡", "Vence hoje", empresaBloco.venceHoje));
+  } else {
+    linhas.push(
+      ...blocoContas("🟡", "Vence hoje", empresaBloco.venceHoje, linhaContaHoje),
+    );
+  }
+  linhas.push("");
+  if (
+    modo === "tudoAgregado" ||
+    modo === "compactarProx7" ||
+    modo === "compactarProx7EHoje"
+  ) {
+    linhas.push(
+      blocoContasCompacto("🔵", "Próximos 7 dias", empresaBloco.proximos7Dias),
+    );
+  } else {
+    linhas.push(
+      ...blocoContas(
+        "🔵",
+        "Próximos 7 dias",
+        empresaBloco.proximos7Dias,
+        linhaContaProxima,
+      ),
+    );
+  }
+
+  return linhas;
+}
+
+function build(data: DailySummaryData, modo: Modo): string {
   const linhas: string[] = [];
   linhas.push("📊 *Resumo Diário Rigel*");
   linhas.push(`_Referência: ${fmtDateLong(data.dataReferencia)}_`);
@@ -115,43 +159,17 @@ function build(
   linhas.push(
     `*Total:* ${fmtBRL(data.vendas.totalValor)} (${data.vendas.totalPedidos} pedidos)`,
   );
-  linhas.push(`_Status considerado: Atendido_`);
+  linhas.push(`_Status considerado: Atendido (apenas Rigel Fabricante)_`);
   linhas.push("");
   for (const c of data.vendas.porCanal) linhas.push(linhaCanal(c));
   linhas.push("");
-  linhas.push("━━━━━━━━━━━━━━━━━━━━━━");
-  linhas.push("💸 *CONTAS A PAGAR*");
-  linhas.push("━━━━━━━━━━━━━━━━━━━━━━");
-  linhas.push("");
 
-  // Em atraso: sempre só agregado.
-  linhas.push(blocoAtrasadas(data.contasPagar.atrasadas));
-  linhas.push("");
-
-  if (modo === "compactarProx7EHoje") {
-    linhas.push(blocoContasCompacto("🟡", "Vence hoje", data.contasPagar.venceHoje));
-  } else {
-    linhas.push(
-      ...blocoContas("🟡", "Vence hoje", data.contasPagar.venceHoje, linhaContaHoje),
-    );
-  }
-  linhas.push("");
-  if (modo === "compactarProx7" || modo === "compactarProx7EHoje") {
-    linhas.push(
-      blocoContasCompacto("🔵", "Próximos 7 dias", data.contasPagar.proximos7Dias),
-    );
-  } else {
-    linhas.push(
-      ...blocoContas(
-        "🔵",
-        "Próximos 7 dias",
-        data.contasPagar.proximos7Dias,
-        linhaContaProxima,
-      ),
-    );
+  for (const empresaBloco of data.contasPagar) {
+    linhas.push(...blocoContasPagarPorEmpresa(empresaBloco, modo));
+    linhas.push("");
   }
 
-  return linhas.join("\n");
+  return linhas.join("\n").trimEnd();
 }
 
 /**
@@ -176,5 +194,8 @@ export function formatDailySummary(data: DailySummaryData): string {
   const compacta1 = build(data, "compactarProx7");
   if (compacta1.length <= MAX_LEN) return neutralizarLinkificacao(compacta1);
 
-  return neutralizarLinkificacao(build(data, "compactarProx7EHoje"));
+  const compacta2 = build(data, "compactarProx7EHoje");
+  if (compacta2.length <= MAX_LEN) return neutralizarLinkificacao(compacta2);
+
+  return neutralizarLinkificacao(build(data, "tudoAgregado"));
 }

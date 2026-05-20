@@ -4,6 +4,7 @@ import {
   MARKETPLACE_VENDEDOR_IDS,
   VENDEDOR_ID_TO_MARKETPLACE_NAME,
 } from "@/lib/config/vendedores-map";
+import { EMPRESAS, type EmpresaSlug } from "@/lib/empresas";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -28,6 +29,14 @@ export interface ContasPagarBloco {
   itens: ContaPagarItem[];
 }
 
+export interface ContasPagarPorEmpresa {
+  empresa: EmpresaSlug;
+  nome: string;
+  venceHoje: ContasPagarBloco;
+  proximos7Dias: ContasPagarBloco;
+  atrasadas: ContasPagarBloco;
+}
+
 export interface DailySummaryData {
   dataReferencia: string; // D-1 em ISO YYYY-MM-DD
   vendas: {
@@ -35,11 +44,7 @@ export interface DailySummaryData {
     totalPedidos: number;
     porCanal: VendasCanal[]; // sempre 8 linhas em ordem fixa
   };
-  contasPagar: {
-    venceHoje: ContasPagarBloco;
-    proximos7Dias: ContasPagarBloco;
-    atrasadas: ContasPagarBloco;
-  };
+  contasPagar: ContasPagarPorEmpresa[]; // 1 entrada por empresa (na ordem do registry EMPRESAS)
 }
 
 // Ordem fixa dos canais (B2B primeiro, marketplaces em ordem alfabética).
@@ -149,24 +154,21 @@ async function fetchVendasPorCanal(d1: string): Promise<{
 // ---------------------------------------------------------------------------
 
 interface ContaPagarRow {
+  empresa: EmpresaSlug;
   nome_conta: string;
   nome_fornecedor: string | null;
   vencimento_pag: string | null;
   valor_pag: string | number | null;
 }
 
-async function fetchContasPagar(hoje: string): Promise<{
-  venceHoje: ContasPagarBloco;
-  proximos7Dias: ContasPagarBloco;
-  atrasadas: ContasPagarBloco;
-}> {
+async function fetchContasPagar(hoje: string): Promise<ContasPagarPorEmpresa[]> {
   const supabase = createSupabaseServer();
   const limiteSuperior = addDaysISO(hoje, 7);
 
   const rows = await supabaseFetchAll<ContaPagarRow>((from, to) =>
     supabase
       .from("contas_pagar")
-      .select("nome_conta, nome_fornecedor, vencimento_pag, valor_pag")
+      .select("empresa, nome_conta, nome_fornecedor, vencimento_pag, valor_pag")
       .eq("lixeira", "Nao")
       .eq("liquidado_pag", "Nao")
       .gte("vencimento_pag", "2000-01-01")
@@ -175,9 +177,15 @@ async function fetchContasPagar(hoje: string): Promise<{
       .range(from, to),
   );
 
-  const atrasadas: ContaPagarItem[] = [];
-  const venceHoje: ContaPagarItem[] = [];
-  const prox7: ContaPagarItem[] = [];
+  // Inicializa buckets zerados para cada empresa do registry (mesmo sem contas, aparece no resumo).
+  const buckets = new Map<EmpresaSlug, {
+    atrasadas: ContaPagarItem[];
+    venceHoje: ContaPagarItem[];
+    prox7: ContaPagarItem[];
+  }>();
+  for (const e of EMPRESAS) {
+    buckets.set(e.slug, { atrasadas: [], venceHoje: [], prox7: [] });
+  }
 
   for (const r of rows) {
     if (!r.vencimento_pag) continue;
@@ -185,27 +193,22 @@ async function fetchContasPagar(hoje: string): Promise<{
     const valor = Number(r.valor_pag) || 0;
     const fornecedor = (r.nome_fornecedor ?? r.nome_conta ?? "").trim() || "(sem nome)";
 
+    const bucket = buckets.get(r.empresa);
+    if (!bucket) continue; // empresa fora do registry — ignora
+
     if (venc < hoje) {
-      atrasadas.push({
+      bucket.atrasadas.push({
         fornecedor,
         valor,
         vencimento: venc,
         diasAtraso: diffDaysISO(hoje, venc),
       });
     } else if (venc === hoje) {
-      venceHoje.push({ fornecedor, valor, vencimento: venc });
+      bucket.venceHoje.push({ fornecedor, valor, vencimento: venc });
     } else if (venc <= limiteSuperior) {
-      prox7.push({ fornecedor, valor, vencimento: venc });
+      bucket.prox7.push({ fornecedor, valor, vencimento: venc });
     }
   }
-
-  // Ordenação
-  atrasadas.sort((a, b) => (b.diasAtraso ?? 0) - (a.diasAtraso ?? 0));
-  venceHoje.sort((a, b) => b.valor - a.valor);
-  prox7.sort((a, b) => {
-    if (a.vencimento !== b.vencimento) return a.vencimento < b.vencimento ? -1 : 1;
-    return b.valor - a.valor;
-  });
 
   function bloco(itens: ContaPagarItem[]): ContasPagarBloco {
     return {
@@ -215,11 +218,23 @@ async function fetchContasPagar(hoje: string): Promise<{
     };
   }
 
-  return {
-    atrasadas: bloco(atrasadas),
-    venceHoje: bloco(venceHoje),
-    proximos7Dias: bloco(prox7),
-  };
+  return EMPRESAS.map((e) => {
+    const b = buckets.get(e.slug)!;
+    // Ordenação por empresa
+    b.atrasadas.sort((a, c) => (c.diasAtraso ?? 0) - (a.diasAtraso ?? 0));
+    b.venceHoje.sort((a, c) => c.valor - a.valor);
+    b.prox7.sort((a, c) => {
+      if (a.vencimento !== c.vencimento) return a.vencimento < c.vencimento ? -1 : 1;
+      return c.valor - a.valor;
+    });
+    return {
+      empresa: e.slug,
+      nome: e.nome,
+      atrasadas: bloco(b.atrasadas),
+      venceHoje: bloco(b.venceHoje),
+      proximos7Dias: bloco(b.prox7),
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
