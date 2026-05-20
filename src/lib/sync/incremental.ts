@@ -24,6 +24,21 @@ function entitiesForEmpresa(empresa: EmpresaSlug): typeof ENTITIES[number][] {
   return ENTITIES.filter((e) => e.name === "contas_pagar");
 }
 
+/** Subtrai 1 dia de uma data ISO YYYY-MM-DD.
+ *
+ *  Workaround para um bug da VHSys: os endpoints /contas-pagar, /contas-receber
+ *  e /vendedores retornam 403 Forbidden quando `data_modificacao` é o dia atual
+ *  (outros endpoints — clientes/produtos/pedidos — aceitam). Sempre enviando a
+ *  data do dia anterior ao watermark, evitamos o 403 e ainda ganhamos uma
+ *  janela de overlap de 24h (registros criados entre 23:59 e 00:00 nunca caem
+ *  em janela cega). O upsert idempotente lida com as duplicatas. */
+function previousDayISO(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
+}
+
 function formatError(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "object" && error !== null) {
@@ -97,7 +112,7 @@ export async function runIncrementalSync(): Promise<Record<string, Record<string
         }
 
         const params: Record<string, string> = {
-          data_modificacao: lastSync.split("T")[0],
+          data_modificacao: previousDayISO(lastSync.split("T")[0]),
         };
 
         const items = await vhsysFetchAll<Record<string, unknown>>(empresa, entity.endpoint, params);
