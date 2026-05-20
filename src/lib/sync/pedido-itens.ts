@@ -58,11 +58,13 @@ async function backfillAlreadySynced(): Promise<number> {
 
 async function fetchPedidoItens(idPedido: number): Promise<PedidoItemAPI[]> {
   const url = `${VHSYS_BASE_URL}/pedidos/${idPedido}/produtos`;
+  // TODO multi-empresa: hoje só opera na Rigel Fabricante (lê env direto, sem usar o client multi-tenant).
+  // Quando outras empresas sincronizarem pedidos, refatorar para usar vhsysGet(empresa, ...) e injetar `empresa` no upsert de pedido_itens.
   const res = await fetch(url, {
     method: "GET",
     headers: {
-      "access-token": process.env.VHSYS_ACCESS_TOKEN!,
-      "secret-access-token": process.env.VHSYS_SECRET_ACCESS_TOKEN!,
+      "access-token": process.env.VHSYS_RIGEL_FABRICANTE_ACCESS_TOKEN!,
+      "secret-access-token": process.env.VHSYS_RIGEL_FABRICANTE_SECRET_ACCESS_TOKEN!,
       "Content-Type": "application/json",
       "User-Agent": "Rigel/1.0",
     },

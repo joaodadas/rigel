@@ -5,6 +5,7 @@ import { ArrowUpDown } from "lucide-react"
 import type { ContaPagarRow } from "@/lib/queries/contas-pagar"
 import { Badge } from "@/components/ui/badge"
 import { fixEncoding } from "@/lib/utils/text"
+import { getEmpresaNome, isEmpresaSlug, type EmpresaSlug } from "@/lib/empresas"
 
 function SortableHeader({
   column,
@@ -117,5 +118,14 @@ export const columns: ColumnDef<ContaPagarRow>[] = [
       )
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
+  },
+  {
+    accessorKey: "empresa",
+    header: () => <span className="text-xs uppercase tracking-wider font-medium">Empresa</span>,
+    cell: ({ row }) => {
+      const slug = row.getValue("empresa") as EmpresaSlug | string
+      const nome = isEmpresaSlug(slug) ? getEmpresaNome(slug) : slug
+      return <span className="text-xs text-muted-foreground whitespace-nowrap">{nome}</span>
+    },
   },
 ]

@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import { EMPRESA_SLUGS } from "@/lib/empresas";
 
 let _redis: Redis | null = null;
 
@@ -131,9 +132,11 @@ export const CACHE_KEYS = {
   biDemoCliente: (id: string, mi: number, mf: number, a: number) =>
     `bi:demo-cliente:${id}:${mi}:${mf}:${a}`,
 
-  // Listing queries (entity, page, pageSize, search)
-  list: (entity: string, page: number, size: number, search?: string) =>
-    `list:${entity}:p${page}:s${size}:${search || "_"}`,
+  // Listing queries (entity, page, pageSize, search, empresas)
+  list: (entity: string, page: number, size: number, search?: string, empresas?: readonly string[]) => {
+    const empresaTag = empresas && empresas.length > 0 ? [...empresas].sort().join(",") : "_all";
+    return `list:${entity}:p${page}:s${size}:${search || "_"}:e${empresaTag}`;
+  },
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -185,12 +188,21 @@ export async function invalidateAllCaches(): Promise<void> {
     keys.push(CACHE_KEYS.biEvolucao(meses));
   }
 
-  // Listing keys for first 5 pages of each entity
+  // Listing keys for first 5 pages of each entity.
+  // Para contas-pagar (multi-empresa), invalida o cache "todos" + cada empresa isolada.
+  // Demais entidades caem no fallback [[]] (uma única variante, sufixo "_all").
+  const EMPRESA_VARIANTS_FOR_LISTS: Record<string, readonly (readonly string[])[]> = {
+    "contas-pagar": [[], ...EMPRESA_SLUGS.map((s) => [s] as const)],
+  };
+
   for (const entity of LIST_ENTITIES) {
-    for (let page = 1; page <= 5; page++) {
-      for (const size of COMMON_PAGE_SIZES) {
-        keys.push(CACHE_KEYS.list(entity, page, size)); // no search
-        keys.push(CACHE_KEYS.list(entity, page, size, "")); // empty search
+    const variants = EMPRESA_VARIANTS_FOR_LISTS[entity] ?? [[]];
+    for (const empresas of variants) {
+      for (let page = 1; page <= 5; page++) {
+        for (const size of COMMON_PAGE_SIZES) {
+          keys.push(CACHE_KEYS.list(entity, page, size, undefined, empresas));
+          keys.push(CACHE_KEYS.list(entity, page, size, "", empresas));
+        }
       }
     }
   }
