@@ -10,14 +10,14 @@
 //   npx tsx --env-file=.env.local scripts/vhsys-probe.ts --empresa hdslim
 //
 // Lê tokens das envs por prefixo (NUNCA imprime os valores):
-//   rigel_fabricante → VHSYS_ACCESS_TOKEN           + VHSYS_SECRET_ACCESS_TOKEN
-//   rigel_medical    → VHSYS_RIGEL_MEDICAL_ACCESS_TOKEN + VHSYS_RIGEL_MEDICAL_SECRET_ACCESS_TOKEN
-//   hdslim           → VHSYS_HDSLIM_ACCESS_TOKEN        + VHSYS_HDSLIM_SECRET_ACCESS_TOKEN
+//   rigel_fabricante → VHSYS_RIGEL_FABRICANTE_ACCESS_TOKEN + VHSYS_RIGEL_FABRICANTE_SECRET_ACCESS_TOKEN
+//   rigel_medical    → VHSYS_RIGEL_MEDICAL_ACCESS_TOKEN    + VHSYS_RIGEL_MEDICAL_SECRET_ACCESS_TOKEN
+//   hdslim           → VHSYS_HDSLIM_ACCESS_TOKEN           + VHSYS_HDSLIM_SECRET_ACCESS_TOKEN
 
 const VHSYS_BASE_URL = "https://api.vhsys.com.br/v2"
 
 const EMPRESA_ENV_PREFIX: Record<string, string> = {
-  rigel_fabricante: "VHSYS",
+  rigel_fabricante: "VHSYS_RIGEL_FABRICANTE",
   rigel_medical: "VHSYS_RIGEL_MEDICAL",
   hdslim: "VHSYS_HDSLIM",
 }

@@ -63,8 +63,8 @@ async function fetchPedidoItens(idPedido: number): Promise<PedidoItemAPI[]> {
   const res = await fetch(url, {
     method: "GET",
     headers: {
-      "access-token": process.env.VHSYS_ACCESS_TOKEN!,
-      "secret-access-token": process.env.VHSYS_SECRET_ACCESS_TOKEN!,
+      "access-token": process.env.VHSYS_RIGEL_FABRICANTE_ACCESS_TOKEN!,
+      "secret-access-token": process.env.VHSYS_RIGEL_FABRICANTE_SECRET_ACCESS_TOKEN!,
       "Content-Type": "application/json",
       "User-Agent": "Rigel/1.0",
     },

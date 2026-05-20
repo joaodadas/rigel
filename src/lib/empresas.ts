@@ -4,7 +4,7 @@
 // NOTE: distinto de src/lib/dre/empresas.ts, que mapeia colunas do DRE (matriz/filial/medical/hdslim/consolidado).
 
 export const EMPRESAS = [
-  { slug: "rigel_fabricante", nome: "Rigel Fabricante", envPrefix: "VHSYS" },
+  { slug: "rigel_fabricante", nome: "Rigel Fabricante", envPrefix: "VHSYS_RIGEL_FABRICANTE" },
   { slug: "rigel_medical",    nome: "Rigel Medical",    envPrefix: "VHSYS_RIGEL_MEDICAL" },
   { slug: "hdslim",           nome: "HD Slim",          envPrefix: "VHSYS_HDSLIM" },
 ] as const;
