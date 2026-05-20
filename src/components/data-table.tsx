@@ -52,6 +52,8 @@ interface DataTableProps<TData, TValue> {
   serverPageSize?: number
   serverSearch?: string
   onServerNavigate?: (newPage?: number, newSearch?: string) => void
+  /** Conteúdo extra renderizado à esquerda do campo de busca, na mesma linha. */
+  toolbarLeft?: React.ReactNode
 }
 
 export function DataTable<TData, TValue>({
@@ -64,6 +66,7 @@ export function DataTable<TData, TValue>({
   serverPageSize,
   serverSearch,
   onServerNavigate,
+  toolbarLeft,
 }: DataTableProps<TData, TValue>) {
   const isServerPaginated = serverTotal !== undefined && onServerNavigate !== undefined
   const [sorting, setSorting] = React.useState<SortingState>([])
@@ -97,6 +100,7 @@ export function DataTable<TData, TValue>({
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-1 items-center gap-3">
+          {toolbarLeft}
           {isServerPaginated ? (
             <div className="relative max-w-sm flex-1">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
