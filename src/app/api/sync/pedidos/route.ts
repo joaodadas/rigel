@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabase/client";
 import { vhsysGet } from "@/lib/vhsys/client";
 import { ENDPOINTS, MAX_PAGE_SIZE } from "@/lib/vhsys/endpoints";
 import { isAuthorizedCron } from "@/lib/auth/cron";
+import { canonicalizePedidoIds } from "@/lib/sync/initial";
 
 export const maxDuration = 300;
 
@@ -41,6 +42,8 @@ export async function POST(req: NextRequest) {
       if (res.paging) total = res.paging.total;
       const items: Record<string, unknown>[] = Array.isArray(res.data) ? res.data : [];
       if (items.length === 0) break;
+
+      canonicalizePedidoIds(items);
 
       // Deduplicate
       const seen = new Set<unknown>();

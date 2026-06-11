@@ -34,6 +34,12 @@ export async function handleVHSysWebhook(payload: WebhookEvent) {
   const empresa = "rigel_fabricante" as const;
   const writesEmpresaColumn = TABLES_WITH_EMPRESA_PK.has(mapping.table);
 
+  // VHSys: o ID canônico de pedidos é id_ped (id_pedido vem 0) — ver canonicalizePedidoIds em initial.ts.
+  // Mutar payload.data cobre tanto o upsert quanto o lookup da PK no delete.
+  if (entityKey === "pedidos" && typeof payload.data.id_ped === "number" && payload.data.id_ped > 0) {
+    payload.data.id_pedido = payload.data.id_ped;
+  }
+
   const record = {
     ...payload.data,
     ...(writesEmpresaColumn ? { empresa } : {}),

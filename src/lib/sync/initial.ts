@@ -16,6 +16,19 @@ export const TABLE_FIELDS: Record<string, string[]> = {
   contas_receber: ["id_conta_rec", "nome_conta", "id_categoria", "categoria_rec", "id_banco", "id_cliente", "nome_cliente", "vencimento_rec", "valor_rec", "valor_pago", "liquidado_rec", "data_pagamento", "forma_pagamento", "tipo_conta", "data_emissao", "n_documento_rec", "observacoes_rec", "id_centro_custos", "centro_custos_rec", "data_cad_rec", "data_mod_rec", "lixeira"],
 };
 
+// A VHSys migrou o ID canônico de pedidos para `id_ped` (~20/05/2026): a listagem
+// passou a devolver `id_pedido: 0` e /pedidos/{id} só aceita id_ped. O banco foi
+// re-chaveado na migração 0005; daqui em diante id_pedido espelha id_ped.
+// Mutar ANTES do dedupe — com id_pedido=0 em todos os itens, o dedupe por PK
+// colapsaria a página inteira em um único registro.
+export function canonicalizePedidoIds(items: Record<string, unknown>[]): void {
+  for (const item of items) {
+    if (typeof item.id_ped === "number" && item.id_ped > 0) {
+      item.id_pedido = item.id_ped;
+    }
+  }
+}
+
 export function pickFields(item: Record<string, unknown>, fields: string[]): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const field of fields) {
@@ -63,6 +76,8 @@ async function syncEntity(
     const rawData = res.data;
     const items: Record<string, unknown>[] = Array.isArray(rawData) ? rawData : [];
     if (items.length === 0) break;
+
+    if (entity === "pedidos") canonicalizePedidoIds(items);
 
     // Deduplicate by primary key (VHSys can return dupes in same page)
     const seen = new Set<unknown>();
