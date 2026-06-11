@@ -8,6 +8,12 @@ const BATCH_SIZE = 200;
 const CONCURRENCY = 2;
 const REQUEST_DELAY_MS = 300;
 
+// Com a VHSys respondendo ~500ms/pedido, 200 pedidos não cabem nos 60s da
+// função na Vercel. Em vez de reduzir o batch, os workers param de puxar
+// pedidos novos perto do teto e encerram limpo — o que já foi processado fica
+// marcado e a próxima execução (cron de 5min) continua de onde parou.
+const SOFT_DEADLINE_MS = 48_000;
+
 // Se o VHSys responder com erro upstream (403 com data string ou 200 com data
 // não-array) em 30 chamadas consecutivas, aborta o run pra não queimar
 // função/quota até a API voltar ao normal.
@@ -150,6 +156,7 @@ export async function runPedidoItensSync(): Promise<PedidoItensSyncStats> {
   let cursor = 0;
   async function worker(): Promise<void> {
     while (cursor < ids.length) {
+      if (Date.now() - t0 > SOFT_DEADLINE_MS) break;
       if (consecutiveUpstreamFailures >= UPSTREAM_FAILURE_ABORT_THRESHOLD) {
         aborted = true;
         break;
