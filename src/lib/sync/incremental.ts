@@ -3,7 +3,7 @@ import { createSupabaseServer } from "@/lib/supabase/client";
 import { vhsysFetchAll } from "@/lib/vhsys/client";
 import { ENDPOINTS } from "@/lib/vhsys/endpoints";
 import { invalidateAllCaches } from "@/lib/redis/client";
-import { TABLE_FIELDS, pickFields } from "@/lib/sync/initial";
+import { TABLE_FIELDS, pickFields, canonicalizePedidoIds } from "@/lib/sync/initial";
 import { EMPRESAS, type EmpresaSlug } from "@/lib/empresas";
 import { TABLES_WITH_EMPRESA_PK, onConflictFor } from "@/lib/sync/multi-empresa";
 
@@ -117,6 +117,8 @@ export async function runIncrementalSync(): Promise<Record<string, Record<string
 
         const items = await vhsysFetchAll<Record<string, unknown>>(empresa, entity.endpoint, params);
         console.log(`[incremental:${empresa}] Fetched ${items.length} ${entity.name} modified since ${lastSync}`);
+
+        if (entity.name === "pedidos") canonicalizePedidoIds(items);
 
         if (items.length > 0) {
           const fields = TABLE_FIELDS[entity.name];
