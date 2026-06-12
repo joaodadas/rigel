@@ -22,6 +22,23 @@ function getHeaders(empresa: EmpresaSlug): HeadersInit {
   };
 }
 
+/** A VHSys retorna HTTP 200 mesmo para erros — auth inválida, por exemplo, vem
+ *  como 200 com {"code":401,"status":"error","data":"..."}. Sem esta checagem o
+ *  corpo de erro passaria adiante como resposta válida (e `data`, que vira
+ *  string, seria espalhada caractere a caractere pelo vhsysFetchAll). */
+function assertBodyOk<T>(
+  empresa: EmpresaSlug,
+  method: string,
+  endpoint: string,
+  body: VHSysResponse<T>,
+): VHSysResponse<T> {
+  if (body.status === "error") {
+    const detail = typeof body.data === "string" ? body.data : JSON.stringify(body.data).slice(0, 200);
+    throw new Error(`VHSys [${empresa}] ${method} ${endpoint} failed: code ${body.code} — ${detail}`);
+  }
+  return body;
+}
+
 function buildUrl(endpoint: string, params?: Record<string, string>): string {
   const url = new URL(`${VHSYS_BASE_URL}${endpoint}`);
   if (params) {
@@ -42,9 +59,19 @@ export async function vhsysGet<T>(
     headers: getHeaders(empresa),
   });
   if (!res.ok) {
-    throw new Error(`VHSys [${empresa}] GET ${endpoint} failed: ${res.status} ${res.statusText}`);
+    const body = await res.text().catch(() => "");
+    // A VHSys usa HTTP 403 com {"status":"error","data":"Nenhum X encontrado!"}
+    // quando a consulta não encontra registros — é lista vazia, não erro de
+    // permissão (auth inválida volta como HTTP 200 com code 401 no corpo).
+    if (res.status === 403 && /nenhum[a]?\s.*encontrad[oa]/i.test(body)) {
+      return { code: 200, status: "success", data: [], paging: { total: 0, page: 1, limit: 0, offset: 0 } };
+    }
+    throw new Error(
+      `VHSys [${empresa}] GET ${endpoint} failed: ${res.status} ${res.statusText}` +
+      (body ? ` — ${body.slice(0, 200)}` : ""),
+    );
   }
-  return res.json() as Promise<VHSysResponse<T>>;
+  return assertBodyOk(empresa, "GET", endpoint, (await res.json()) as VHSysResponse<T>);
 }
 
 export async function vhsysPost<T>(
@@ -60,7 +87,7 @@ export async function vhsysPost<T>(
   if (!res.ok) {
     throw new Error(`VHSys [${empresa}] POST ${endpoint} failed: ${res.status} ${res.statusText}`);
   }
-  return res.json() as Promise<VHSysResponse<T>>;
+  return assertBodyOk(empresa, "POST", endpoint, (await res.json()) as VHSysResponse<T>);
 }
 
 export async function vhsysPut<T>(
@@ -76,7 +103,7 @@ export async function vhsysPut<T>(
   if (!res.ok) {
     throw new Error(`VHSys [${empresa}] PUT ${endpoint} failed: ${res.status} ${res.statusText}`);
   }
-  return res.json() as Promise<VHSysResponse<T>>;
+  return assertBodyOk(empresa, "PUT", endpoint, (await res.json()) as VHSysResponse<T>);
 }
 
 export async function vhsysDelete<T>(
@@ -90,7 +117,7 @@ export async function vhsysDelete<T>(
   if (!res.ok) {
     throw new Error(`VHSys [${empresa}] DELETE ${endpoint} failed: ${res.status} ${res.statusText}`);
   }
-  return res.json() as Promise<VHSysResponse<T>>;
+  return assertBodyOk(empresa, "DELETE", endpoint, (await res.json()) as VHSysResponse<T>);
 }
 
 function delay(ms: number): Promise<void> {
