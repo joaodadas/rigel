@@ -144,16 +144,20 @@ export function evaluateDivergence(
 
 /** Para cada entidade de listagem, compara paging.total da VHSys (1 request)
  *  com a contagem no Supabase. Falha de VHSys numa entidade = não verificável
- *  (pulada, não conta como divergência). */
+ *  (pulada, não conta como divergência).
+ *
+ *  Compara maçã-com-maçã filtrando `lixeira=Nao` nos DOIS lados: o `paging.total`
+ *  bruto da VHSys inclui a lixeira (que o sync não traz), o que inflaria o gap e
+ *  geraria falso-positivo (ex.: produtos pareceria −38% só por causa do lixo). */
 export async function checkDivergence(supabase: SupabaseClient): Promise<DivergedEntity[]> {
   const out: DivergedEntity[] = [];
   for (const t of syncTargets()) {
     if (!t.endpoint) continue;
     try {
-      const resp = await vhsysGet(t.empresa, t.endpoint, { limit: "1" });
+      const resp = await vhsysGet(t.empresa, t.endpoint, { limit: "1", lixeira: "Nao" });
       const vhsysTotal = resp.paging?.total ?? 0;
 
-      let q = supabase.from(t.entity).select("*", { count: "exact", head: true });
+      let q = supabase.from(t.entity).select("*", { count: "exact", head: true }).eq("lixeira", "Nao");
       if (TABLES_WITH_EMPRESA_PK.has(t.entity)) q = q.eq("empresa", t.empresa);
       const { count } = await q;
       const supabaseCount = count ?? 0;
