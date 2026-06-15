@@ -18,7 +18,7 @@ const ENTITIES = [
   { name: "contas_receber", endpoint: ENDPOINTS.contasReceber, pk: "id_conta_rec", dateField: "data_mod_rec" },
 ] as const;
 
-function entitiesForEmpresa(empresa: EmpresaSlug): typeof ENTITIES[number][] {
+export function entitiesForEmpresa(empresa: EmpresaSlug): typeof ENTITIES[number][] {
   // Rigel Fabricante sincroniza tudo. Demais empresas: só contas_pagar nesta entrega.
   if (empresa === "rigel_fabricante") return [...ENTITIES];
   return ENTITIES.filter((e) => e.name === "contas_pagar");

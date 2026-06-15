@@ -241,6 +241,24 @@ export async function runPedidoItensSync(): Promise<PedidoItensSyncStats> {
     durationMs: Date.now() - t0,
   };
 
+  // Registra no sync_log para o monitor de saúde enxergar o pedido_itens igual
+  // às demais entidades. status='error' só quando abortado por falha upstream;
+  // run normal com fila ainda drenando (remaining>0) é sucesso, por design.
+  try {
+    await supabase.from("sync_log").insert({
+      entity: "pedido_itens",
+      empresa: "rigel_fabricante",
+      records_synced: stats.itensUpserted,
+      status: aborted ? "error" : "success",
+      error_message: aborted
+        ? `aborted: ${upstreamFailures} falhas upstream, ${stats.remaining} restantes`
+        : null,
+      duration_ms: stats.durationMs,
+    });
+  } catch (logError) {
+    console.error("[sync-itens] falha ao gravar sync_log:", logError);
+  }
+
   console.log(`[sync-itens] done:`, stats);
   return stats;
 }

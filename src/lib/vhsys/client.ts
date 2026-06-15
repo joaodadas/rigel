@@ -22,6 +22,23 @@ function getHeaders(empresa: EmpresaSlug): HeadersInit {
   };
 }
 
+/** Erro transitório da VHSys (glitch de servidor): a API responde
+ *  intermitentemente com "Erro ao comunicar com a API" ou 5xx/429 em uma página
+ *  no meio da paginação. Leituras são idempotentes, então vhsysGet retenta. */
+class VHSysTransientError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "VHSysTransientError";
+  }
+}
+
+/** Decide se uma resposta de erro da VHSys é transitória (vale retentar). O erro
+ *  genérico "Erro ao comunicar com a API" e códigos 5xx/429 são glitches do
+ *  servidor; 401 (auth) e demais são permanentes. */
+function isTransientDetail(code: number, detail: string): boolean {
+  return /erro ao comunicar com a api/i.test(detail) || code >= 500 || code === 429;
+}
+
 /** A VHSys retorna HTTP 200 mesmo para erros — auth inválida, por exemplo, vem
  *  como 200 com {"code":401,"status":"error","data":"..."}. Sem esta checagem o
  *  corpo de erro passaria adiante como resposta válida (e `data`, que vira
@@ -34,9 +51,27 @@ function assertBodyOk<T>(
 ): VHSysResponse<T> {
   if (body.status === "error") {
     const detail = typeof body.data === "string" ? body.data : JSON.stringify(body.data).slice(0, 200);
-    throw new Error(`VHSys [${empresa}] ${method} ${endpoint} failed: code ${body.code} — ${detail}`);
+    const message = `VHSys [${empresa}] ${method} ${endpoint} failed: code ${body.code} — ${detail}`;
+    if (isTransientDetail(body.code, detail)) throw new VHSysTransientError(message);
+    throw new Error(message);
   }
   return body;
+}
+
+/** Retenta `fn` quando ela lança VHSysTransientError, com backoff. Usado só em
+ *  leituras (GET), que são idempotentes — POST/PUT/DELETE não são retentados. */
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  let lastError: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (!(error instanceof VHSysTransientError)) throw error;
+      lastError = error;
+      if (i < attempts - 1) await delay(500 * (i + 1));
+    }
+  }
+  throw lastError;
 }
 
 function buildUrl(endpoint: string, params?: Record<string, string>): string {
@@ -49,7 +84,7 @@ function buildUrl(endpoint: string, params?: Record<string, string>): string {
   return url.toString();
 }
 
-export async function vhsysGet<T>(
+async function vhsysGetOnce<T>(
   empresa: EmpresaSlug,
   endpoint: string,
   params?: Record<string, string>,
@@ -66,12 +101,21 @@ export async function vhsysGet<T>(
     if (res.status === 403 && /nenhum[a]?\s.*encontrad[oa]/i.test(body)) {
       return { code: 200, status: "success", data: [], paging: { total: 0, page: 1, limit: 0, offset: 0 } };
     }
-    throw new Error(
+    const message =
       `VHSys [${empresa}] GET ${endpoint} failed: ${res.status} ${res.statusText}` +
-      (body ? ` — ${body.slice(0, 200)}` : ""),
-    );
+      (body ? ` — ${body.slice(0, 200)}` : "");
+    if (res.status >= 500 || res.status === 429) throw new VHSysTransientError(message);
+    throw new Error(message);
   }
   return assertBodyOk(empresa, "GET", endpoint, (await res.json()) as VHSysResponse<T>);
+}
+
+export async function vhsysGet<T>(
+  empresa: EmpresaSlug,
+  endpoint: string,
+  params?: Record<string, string>,
+): Promise<VHSysResponse<T>> {
+  return withRetry(() => vhsysGetOnce<T>(empresa, endpoint, params));
 }
 
 export async function vhsysPost<T>(
