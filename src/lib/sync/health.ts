@@ -138,3 +138,58 @@ export async function checkDivergence(supabase: SupabaseClient): Promise<Diverge
   }
   return out;
 }
+
+function formatStaleFor(ms: number): string {
+  const totalMin = Math.floor(ms / 60_000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h > 0 ? `há ${h}h${String(m).padStart(2, "0")}` : `há ${m}min`;
+}
+
+/** Monta o resumo consolidado (PT) ou null quando não há nada a reportar. */
+export function formatHealthReport(
+  stale: StaleEntity[],
+  diverged: DivergedEntity[],
+  monitorErrors: string[],
+  now: Date,
+): string | null {
+  if (stale.length === 0 && diverged.length === 0 && monitorErrors.length === 0) return null;
+
+  const lines: string[] = ["🔴 Rigel — Saúde do sync", ""];
+
+  if (stale.length) {
+    lines.push("Travadas:");
+    for (const e of stale) {
+      const when = Number.isFinite(e.staleForMs)
+        ? `sem sucesso ${formatStaleFor(e.staleForMs)}`
+        : "sem sucesso registrado";
+      lines.push(`• [${e.empresa}] ${e.entity} — ${when}`);
+      if (e.lastError) lines.push(`  último erro: ${e.lastError}`);
+    }
+    lines.push("");
+  }
+
+  if (diverged.length) {
+    lines.push("Suspeita de divergência (diário):");
+    for (const d of diverged) {
+      const pct = (d.deltaPct * 100).toLocaleString("pt-BR", {
+        maximumFractionDigits: 1,
+        signDisplay: "always",
+      });
+      lines.push(
+        `• ${d.entity} — Supabase ${d.supabaseCount.toLocaleString("pt-BR")} vs VHSys ${d.vhsysTotal.toLocaleString("pt-BR")} (${pct}%)`,
+      );
+    }
+    lines.push("");
+  }
+
+  if (monitorErrors.length) {
+    lines.push("Falhas no monitor:");
+    for (const m of monitorErrors) lines.push(`• ${m}`);
+    lines.push("");
+  }
+
+  const hh = String(now.getUTCHours()).padStart(2, "0");
+  lines.push(`Verificado às ${hh}:00 UTC`);
+  return lines.join("\n");
+}
