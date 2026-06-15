@@ -45,7 +45,7 @@ export function pickFields(item: Record<string, unknown>, fields: string[]): Rec
 }
 
 // Stream sync: fetch page -> upsert -> next page (no memory accumulation)
-async function syncEntity(
+export async function syncEntity(
   supabase: SupabaseClient,
   empresa: EmpresaSlug,
   entity: string,

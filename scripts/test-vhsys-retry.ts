@@ -56,10 +56,30 @@ async function testDoesNotRetryAuth() {
   throw new Error("esperado throw em auth 401");
 }
 
+async function testToleratesMoreThanThree() {
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls++;
+    // falha nas 3 primeiras, sucesso na 4ª — o código antigo (3 tentativas) falharia aqui
+    if (calls < 4) {
+      return jsonResponse({ code: 404, status: "error", data: "Erro ao comunicar com a API" });
+    }
+    return jsonResponse({ code: 200, status: "success", data: [{ id_pedido: 1 }], paging: {} });
+  }) as typeof fetch;
+
+  const res = await vhsysGet("rigel_fabricante", "/pedidos", { limit: "1" });
+  if (calls !== 4) throw new Error(`esperado 4 chamadas (3 falhas + 1 ok), houve ${calls}`);
+  if (!Array.isArray(res.data) || res.data.length !== 1) {
+    throw new Error(`esperado data com 1 item, veio ${JSON.stringify(res.data)}`);
+  }
+  console.log(`PASS: tolera >3 falhas (resolveu em ${calls} tentativas)`);
+}
+
 async function main() {
   try {
     await testRetriesTransient();
     await testDoesNotRetryAuth();
+    await testToleratesMoreThanThree();
   } finally {
     globalThis.fetch = realFetch;
   }
