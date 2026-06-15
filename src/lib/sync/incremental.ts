@@ -1,13 +1,11 @@
 // src/lib/sync/incremental.ts
 import { createSupabaseServer } from "@/lib/supabase/client";
-import { vhsysFetchAll } from "@/lib/vhsys/client";
+import { vhsysGet } from "@/lib/vhsys/client";
 import { ENDPOINTS, MAX_PAGE_SIZE } from "@/lib/vhsys/endpoints";
 import { invalidateAllCaches } from "@/lib/redis/client";
 import { TABLE_FIELDS, pickFields, canonicalizePedidoIds } from "@/lib/sync/initial";
 import { EMPRESAS, type EmpresaSlug } from "@/lib/empresas";
 import { TABLES_WITH_EMPRESA_PK, onConflictFor } from "@/lib/sync/multi-empresa";
-
-const BATCH_SIZE = 500;
 
 const SOFT_DEADLINE_MS = 45_000;
 
@@ -150,12 +148,16 @@ async function getLastSyncTime(
 export async function runIncrementalSync(): Promise<Record<string, Record<string, number>>> {
   const supabase = createSupabaseServer();
   const results: Record<string, Record<string, number>> = {};
+  const runStart = Date.now();
+  let deadlineHit = false;
 
   for (const empresaConfig of EMPRESAS) {
+    if (deadlineHit) break;
     const empresa = empresaConfig.slug;
     results[empresa] = {};
 
     for (const entity of entitiesForEmpresa(empresa)) {
+      if (deadlineHit) break;
       const start = Date.now();
 
       try {
@@ -171,54 +173,62 @@ export async function runIncrementalSync(): Promise<Record<string, Record<string
         const params: Record<string, string> = {
           data_modificacao: previousDayISO(lastSync.split("T")[0]),
         };
+        const fields = TABLE_FIELDS[entity.name];
+        const writesEmpresaColumn = TABLES_WITH_EMPRESA_PK.has(entity.name);
 
-        const items = await vhsysFetchAll<Record<string, unknown>>(empresa, entity.endpoint, params);
-        console.log(`[incremental:${empresa}] Fetched ${items.length} ${entity.name} modified since ${lastSync}`);
-
-        if (entity.name === "pedidos") canonicalizePedidoIds(items);
-
-        if (items.length > 0) {
-          const fields = TABLE_FIELDS[entity.name];
-          const writesEmpresaColumn = TABLES_WITH_EMPRESA_PK.has(entity.name);
-
-          const seen = new Set<unknown>();
-          const deduped = items.filter((item) => {
-            const key = item[entity.pk];
-            if (key === undefined || seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-
-          for (let i = 0; i < deduped.length; i += BATCH_SIZE) {
-            const batch = deduped.slice(i, i + BATCH_SIZE).map((item) => ({
+        const result = await streamEntityPages({
+          entityName: entity.name,
+          pk: entity.pk,
+          deadlineAt: runStart + SOFT_DEADLINE_MS,
+          fetchPage: async (offset) => {
+            const res = await vhsysGet<Record<string, unknown>>(empresa, entity.endpoint, {
+              ...params,
+              limit: String(MAX_PAGE_SIZE),
+              offset: String(offset),
+            });
+            return res.data ?? [];
+          },
+          upsertBatch: async (rows) => {
+            const batch = rows.map((item) => ({
               ...(fields ? pickFields(item, fields) : item),
               ...(writesEmpresaColumn ? { empresa } : {}),
               synced_at: new Date().toISOString(),
             }));
-
             const { error } = await supabase
               .from(entity.name)
               .upsert(batch, { onConflict: onConflictFor(entity.name, entity.pk) });
-
             if (error) {
-              console.error(`[incremental:${empresa}] Error upserting ${entity.name} batch ${i}:`, error);
+              console.error(`[incremental:${empresa}] Error upserting ${entity.name}:`, error);
               throw error;
             }
-          }
-        }
-
-        const duration = Date.now() - start;
-        results[empresa][entity.name] = items.length;
-
-        await supabase.from("sync_log").insert({
-          entity: entity.name,
-          empresa,
-          records_synced: items.length,
-          status: "success",
-          duration_ms: duration,
+          },
         });
 
-        console.log(`[incremental:${empresa}] ${entity.name} done: ${items.length} records in ${duration}ms`);
+        const duration = Date.now() - start;
+        results[empresa][entity.name] = result.synced;
+
+        if (result.complete) {
+          await supabase.from("sync_log").insert({
+            entity: entity.name,
+            empresa,
+            records_synced: result.synced,
+            status: "success",
+            duration_ms: duration,
+          });
+          console.log(`[incremental:${empresa}] ${entity.name} done: ${result.synced} records in ${duration}ms`);
+        } else {
+          await supabase.from("sync_log").insert({
+            entity: entity.name,
+            empresa,
+            records_synced: result.synced,
+            status: "error",
+            error_message: `incompleto: soft deadline em ${result.pagesFetched} páginas (${result.synced} registros)`,
+            duration_ms: duration,
+          });
+          console.warn(`[incremental:${empresa}] ${entity.name} incompleto (soft deadline): ${result.pagesFetched} páginas, ${result.synced} registros`);
+          deadlineHit = true;
+          break;
+        }
       } catch (error) {
         const duration = Date.now() - start;
         const message = formatError(error);
