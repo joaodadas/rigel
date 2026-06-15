@@ -28,7 +28,7 @@ function parseRecipients(raw: string): string[] {
     out.push(trimmed);
   }
   if (out.length === 0) {
-    throw new Error("WHATSAPP_RECIPIENT_NUMBER has no valid recipients");
+    throw new Error("Nenhum destinatário de WhatsApp válido na lista");
   }
   return out;
 }
@@ -72,16 +72,17 @@ async function sendOneRecipient(
 }
 
 /**
- * Envia uma mensagem de texto via Evolution API v2 para todos os destinatários
- * configurados em WHATSAPP_RECIPIENT_NUMBER (lista CSV). Envios são sequenciais,
- * cada um com 3 retries e backoff 0/1s/3s. Falha de um destinatário NÃO bloqueia
- * os demais. Só lança erro se TODOS falharem.
+ * Envia uma mensagem de texto via Evolution API v2 para uma lista CSV arbitrária
+ * de destinatários. Envios sequenciais, cada um com 3 retries (backoff 0/1s/3s).
+ * Falha de um destinatário NÃO bloqueia os demais; só lança se TODOS falharem.
  */
-export async function sendWhatsAppText(text: string): Promise<void> {
+export async function sendWhatsAppTextTo(
+  recipientRaw: string | undefined,
+  text: string,
+): Promise<void> {
   const apiUrl = process.env.EVOLUTION_API_URL;
   const apiKey = process.env.EVOLUTION_API_KEY;
   const instance = process.env.EVOLUTION_INSTANCE_NAME;
-  const recipientRaw = process.env.WHATSAPP_RECIPIENT_NUMBER;
 
   if (!apiUrl || !apiKey || !instance) {
     throw new Error(
@@ -89,7 +90,7 @@ export async function sendWhatsAppText(text: string): Promise<void> {
     );
   }
   if (!recipientRaw) {
-    throw new Error("WHATSAPP_RECIPIENT_NUMBER not configured");
+    throw new Error("sendWhatsAppTextTo: recipientRaw vazio");
   }
 
   const recipients = parseRecipients(recipientRaw);
@@ -120,4 +121,16 @@ export async function sendWhatsAppText(text: string): Promise<void> {
       `Evolution send failed for all ${recipients.length} recipients: ${summary}`,
     );
   }
+}
+
+/**
+ * Envia para os destinatários do cliente (WHATSAPP_RECIPIENT_NUMBER).
+ * Mantém a assinatura usada pelo daily-summary.
+ */
+export async function sendWhatsAppText(text: string): Promise<void> {
+  const recipientRaw = process.env.WHATSAPP_RECIPIENT_NUMBER;
+  if (!recipientRaw) {
+    throw new Error("WHATSAPP_RECIPIENT_NUMBER not configured");
+  }
+  return sendWhatsAppTextTo(recipientRaw, text);
 }
