@@ -1,13 +1,69 @@
 // src/lib/sync/incremental.ts
 import { createSupabaseServer } from "@/lib/supabase/client";
 import { vhsysFetchAll } from "@/lib/vhsys/client";
-import { ENDPOINTS } from "@/lib/vhsys/endpoints";
+import { ENDPOINTS, MAX_PAGE_SIZE } from "@/lib/vhsys/endpoints";
 import { invalidateAllCaches } from "@/lib/redis/client";
 import { TABLE_FIELDS, pickFields, canonicalizePedidoIds } from "@/lib/sync/initial";
 import { EMPRESAS, type EmpresaSlug } from "@/lib/empresas";
 import { TABLES_WITH_EMPRESA_PK, onConflictFor } from "@/lib/sync/multi-empresa";
 
 const BATCH_SIZE = 500;
+
+const SOFT_DEADLINE_MS = 45_000;
+
+export interface StreamResult {
+  synced: number;
+  complete: boolean;
+  pagesFetched: number;
+}
+
+/** Pagina uma entidade em streaming: fetchPage(offset) -> dedup por PK na página
+ *  -> upsertBatch -> próxima, até a página curta (complete) ou o soft deadline
+ *  (complete=false). NÃO grava sync_log — quem chama decide (success só quando
+ *  complete). fetchPage/upsertBatch são injetados para teste. */
+export async function streamEntityPages(args: {
+  entityName: string;
+  pk: string;
+  fetchPage: (offset: number) => Promise<Record<string, unknown>[]>;
+  upsertBatch: (rows: Record<string, unknown>[]) => Promise<void>;
+  deadlineAt: number;
+  now?: () => number;
+}): Promise<StreamResult> {
+  const now = args.now ?? Date.now;
+  let offset = 0;
+  let synced = 0;
+  let pagesFetched = 0;
+
+  while (true) {
+    if (now() >= args.deadlineAt) {
+      return { synced, complete: false, pagesFetched };
+    }
+
+    const items = await args.fetchPage(offset);
+    pagesFetched++;
+
+    if (items.length > 0) {
+      if (args.entityName === "pedidos") canonicalizePedidoIds(items);
+
+      const seen = new Set<unknown>();
+      const deduped = items.filter((item) => {
+        const key = item[args.pk];
+        if (key === undefined) return true; // no PK → keep, can't dedup
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      if (deduped.length > 0) await args.upsertBatch(deduped);
+      synced += items.length;
+    }
+
+    if (items.length < MAX_PAGE_SIZE) {
+      return { synced, complete: true, pagesFetched };
+    }
+    offset += MAX_PAGE_SIZE;
+  }
+}
 
 const ENTITIES = [
   { name: "vendedores", endpoint: ENDPOINTS.vendedores, pk: "id_vendedor", dateField: "data_mod_vendedor" },
