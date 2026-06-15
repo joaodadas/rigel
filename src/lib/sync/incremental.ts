@@ -48,8 +48,7 @@ export async function streamEntityPages(args: {
       const seen = new Set<unknown>();
       const deduped = items.filter((item) => {
         const key = item[args.pk];
-        if (key === undefined) return true; // no PK → keep, can't dedup
-        if (seen.has(key)) return false;
+        if (key === undefined || seen.has(key)) return false;
         seen.add(key);
         return true;
       });

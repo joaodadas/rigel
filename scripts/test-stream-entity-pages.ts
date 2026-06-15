@@ -5,8 +5,9 @@ import { streamEntityPages } from "../src/lib/sync/incremental";
 function assert(cond: boolean, msg: string) {
   if (!cond) throw new Error(msg);
 }
-function page(n: number): Record<string, unknown>[] {
-  return Array.from({ length: n }, (_, i) => ({ id_pedido: Math.random() * 1e9 | 0, _i: i }));
+let idSeq = 0;
+function page(n: number, idField = "id_pedido"): Record<string, unknown>[] {
+  return Array.from({ length: n }, () => ({ [idField]: ++idSeq }));
 }
 
 async function main() {
@@ -33,7 +34,7 @@ async function main() {
     const res = await streamEntityPages({
       entityName: "clientes", pk: "id_cliente", deadlineAt: 1000,
       now: () => clock[calls++],
-      fetchPage: async () => page(250),
+      fetchPage: async () => page(250, "id_cliente"),
       upsertBatch: async (rows) => { upserts.push(rows.length); },
     });
     assert(res.complete === false, "deadline deveria deixar complete=false");
