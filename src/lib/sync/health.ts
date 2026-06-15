@@ -101,3 +101,40 @@ export async function checkStaleness(supabase: SupabaseClient, now: Date = new D
   if (error) throw error;
   return evaluateStaleness(syncTargets(), (data ?? []) as SyncLogRow[], now);
 }
+
+/** Decide se a contagem do Supabase divergiu da VHSys na direção perigosa
+ *  (temos MENOS que a origem, acima da tolerância). Puro. Retorna null quando
+ *  não há divergência relevante. */
+export function evaluateDivergence(
+  vhsysTotal: number,
+  supabaseCount: number,
+): { vhsysTotal: number; supabaseCount: number; deltaPct: number } | null {
+  if (vhsysTotal < DIVERGENCE_MIN_TOTAL) return null;
+  if (supabaseCount >= vhsysTotal * (1 - DIVERGENCE_TOLERANCE)) return null;
+  return { vhsysTotal, supabaseCount, deltaPct: (supabaseCount - vhsysTotal) / vhsysTotal };
+}
+
+/** Para cada entidade de listagem, compara paging.total da VHSys (1 request)
+ *  com a contagem no Supabase. Falha de VHSys numa entidade = não verificável
+ *  (pulada, não conta como divergência). */
+export async function checkDivergence(supabase: SupabaseClient): Promise<DivergedEntity[]> {
+  const out: DivergedEntity[] = [];
+  for (const t of syncTargets()) {
+    if (!t.endpoint) continue;
+    try {
+      const resp = await vhsysGet(t.empresa, t.endpoint, { limit: "1" });
+      const vhsysTotal = resp.paging?.total ?? 0;
+
+      let q = supabase.from(t.entity).select("*", { count: "exact", head: true });
+      if (TABLES_WITH_EMPRESA_PK.has(t.entity)) q = q.eq("empresa", t.empresa);
+      const { count } = await q;
+      const supabaseCount = count ?? 0;
+
+      const verdict = evaluateDivergence(vhsysTotal, supabaseCount);
+      if (verdict) out.push({ empresa: t.empresa, entity: t.entity, ...verdict });
+    } catch (e) {
+      console.warn(`[sync-health] divergência não verificável para ${t.empresa}/${t.entity}:`, e);
+    }
+  }
+  return out;
+}
