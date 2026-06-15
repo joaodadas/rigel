@@ -90,16 +90,44 @@ export function evaluateStaleness(targets: SyncTarget[], rows: SyncLogRow[], now
   return stale;
 }
 
-/** Lê o sync_log (últimos 7 dias) e avalia staleness. */
+const SYNC_LOG_COLS = "entity, empresa, status, error_message, last_sync_at";
+
+/** Lê o sync_log e avalia staleness. Busca por alvo a última linha e o último
+ *  sucesso (cada `.limit(1)`, via índice (entity, empresa, last_sync_at)). Isso
+ *  evita o teto default de linhas do PostgREST — uma única query de janela seria
+ *  truncada (o sync_log acumula milhares de linhas) e perderia sucessos antigos,
+ *  reportando falsamente "nunca sincronizou". */
 export async function checkStaleness(supabase: SupabaseClient, now: Date = new Date()): Promise<StaleEntity[]> {
-  const sinceISO = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const { data, error } = await supabase
-    .from("sync_log")
-    .select("entity, empresa, status, error_message, last_sync_at")
-    .gte("last_sync_at", sinceISO)
-    .order("last_sync_at", { ascending: false });
-  if (error) throw error;
-  return evaluateStaleness(syncTargets(), (data ?? []) as SyncLogRow[], now);
+  const targets = syncTargets();
+  const rows: SyncLogRow[] = [];
+
+  for (const t of targets) {
+    const { data: latest } = await supabase
+      .from("sync_log")
+      .select(SYNC_LOG_COLS)
+      .eq("entity", t.entity)
+      .eq("empresa", t.empresa)
+      .order("last_sync_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latest) rows.push(latest as SyncLogRow);
+
+    // Se a última linha já é um sucesso, ela basta; senão busca o último sucesso.
+    if (!latest || (latest as SyncLogRow).status !== "success") {
+      const { data: success } = await supabase
+        .from("sync_log")
+        .select(SYNC_LOG_COLS)
+        .eq("entity", t.entity)
+        .eq("empresa", t.empresa)
+        .eq("status", "success")
+        .order("last_sync_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (success) rows.push(success as SyncLogRow);
+    }
+  }
+
+  return evaluateStaleness(targets, rows, now);
 }
 
 /** Decide se a contagem do Supabase divergiu da VHSys na direção perigosa
