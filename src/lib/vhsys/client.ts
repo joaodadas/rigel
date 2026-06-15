@@ -60,7 +60,7 @@ function assertBodyOk<T>(
 
 /** Retenta `fn` quando ela lança VHSysTransientError, com backoff. Usado só em
  *  leituras (GET), que são idempotentes — POST/PUT/DELETE não são retentados. */
-async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, attempts = 6): Promise<T> {
   let lastError: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
@@ -68,7 +68,7 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
     } catch (error) {
       if (!(error instanceof VHSysTransientError)) throw error;
       lastError = error;
-      if (i < attempts - 1) await delay(500 * (i + 1));
+      if (i < attempts - 1) await delay(Math.min(500 * 2 ** i, 4000));
     }
   }
   throw lastError;
