@@ -59,8 +59,13 @@ function assertBodyOk<T>(
 }
 
 /** Retenta `fn` quando ela lança VHSysTransientError, com backoff. Usado só em
- *  leituras (GET), que são idempotentes — POST/PUT/DELETE não são retentados. */
-async function withRetry<T>(fn: () => Promise<T>, attempts = 6): Promise<T> {
+ *  leituras (GET), que são idempotentes — POST/PUT/DELETE não são retentados.
+ *
+ *  10 tentativas: em produção (Vercel) o gateway da VHSys no /pedidos devolve o
+ *  erro intermitente "Erro ao comunicar com a API" que persiste >14s — retry-6
+ *  (janela ~14s) esgotava e abortava. 10 tentativas dão uma janela de ~27s para
+ *  o erro passar. Cabe no orçamento de 300s (ver route.ts / SOFT_DEADLINE_MS). */
+async function withRetry<T>(fn: () => Promise<T>, attempts = 10): Promise<T> {
   let lastError: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
