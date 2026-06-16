@@ -54,7 +54,11 @@ async function probe(label: string, path: string, ua: string) {
 }
 
 export async function GET(req: NextRequest) {
-  if (!isAuthorizedCron(req)) {
+  // Aceita o segredo via header (cron) OU via ?secret= na URL, para poder abrir
+  // direto no navegador. Endpoint temporário de diagnóstico.
+  const secretParam = req.nextUrl.searchParams.get("secret");
+  const okByParam = !!process.env.CRON_SECRET && secretParam === process.env.CRON_SECRET;
+  if (!isAuthorizedCron(req) && !okByParam) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
