@@ -72,5 +72,11 @@ export async function GET(req: NextRequest) {
   // 4. clientes (controle — funciona no cron)
   results.push(await probe("clientes-controle-rigelUA", "/clientes?limit=1", "Rigel/1.0"));
 
+  // Escreve nos logs da Vercel (uma linha por probe) para poder ser disparado
+  // pelo painel de Crons e lido em Logs — além de retornar na resposta HTTP.
+  for (const r of results) {
+    console.log("[debug-pedidos]", JSON.stringify(r));
+  }
+
   return NextResponse.json({ ranAt: new Date().toISOString(), results }, { status: 200 });
 }
