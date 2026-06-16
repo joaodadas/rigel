@@ -7,7 +7,10 @@ import { TABLE_FIELDS, pickFields, canonicalizePedidoIds } from "@/lib/sync/init
 import { EMPRESAS, type EmpresaSlug } from "@/lib/empresas";
 import { TABLES_WITH_EMPRESA_PK, onConflictFor } from "@/lib/sync/multi-empresa";
 
-const SOFT_DEADLINE_MS = 45_000;
+// Margem abaixo do maxDuration=300s da rota (ver route.ts). O /pedidos é lento
+// (~3,8s/página); 250s dá folga enorme para a janela completar com retries, e
+// ainda para limpo antes do kill seco da Vercel se algo sair muito do normal.
+const SOFT_DEADLINE_MS = 250_000;
 
 export interface StreamResult {
   synced: number;
