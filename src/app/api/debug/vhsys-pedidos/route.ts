@@ -54,7 +54,11 @@ async function probe(label: string, path: string, ua: string) {
 }
 
 export async function GET(req: NextRequest) {
-  if (!isAuthorizedCron(req)) {
+  // Aceita o segredo via header (cron) OU via ?secret= na URL, para poder abrir
+  // direto no navegador. Endpoint temporário de diagnóstico.
+  const secretParam = req.nextUrl.searchParams.get("secret");
+  const okByParam = !!process.env.CRON_SECRET && secretParam === process.env.CRON_SECRET;
+  if (!isAuthorizedCron(req) && !okByParam) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -67,6 +71,12 @@ export async function GET(req: NextRequest) {
   results.push(await probe("pedidos-grande-browserUA", "/pedidos?data_modificacao=2026-06-14&limit=250&offset=0", BROWSER_UA));
   // 4. clientes (controle — funciona no cron)
   results.push(await probe("clientes-controle-rigelUA", "/clientes?limit=1", "Rigel/1.0"));
+
+  // Escreve nos logs da Vercel (uma linha por probe) para poder ser disparado
+  // pelo painel de Crons e lido em Logs — além de retornar na resposta HTTP.
+  for (const r of results) {
+    console.log("[debug-pedidos]", JSON.stringify(r));
+  }
 
   return NextResponse.json({ ranAt: new Date().toISOString(), results }, { status: 200 });
 }

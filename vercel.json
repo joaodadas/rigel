@@ -16,6 +16,10 @@
     {
       "path": "/api/cron/daily-summary",
       "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/debug/vhsys-pedidos",
+      "schedule": "0 0 1 1 *"
     }
   ]
 }
