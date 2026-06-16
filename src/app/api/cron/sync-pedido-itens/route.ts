@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { runPedidoItensSync } from "@/lib/sync/pedido-itens";
 import { isAuthorizedCron } from "@/lib/auth/cron";
 
+// gru1 = São Paulo: colocaliza com a VHSys (Brasil), que serve /pedidos/{id}/produtos
+// lentamente. Dos EUA (default) o gateway da VHSys estoura timeout; do Brasil, não.
+export const preferredRegion = "gru1";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 

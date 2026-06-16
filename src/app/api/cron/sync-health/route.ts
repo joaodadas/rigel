@@ -10,6 +10,9 @@ import {
 } from "@/lib/sync/health";
 import { sendWhatsAppTextTo } from "@/lib/evolution/client";
 
+// gru1 = São Paulo: a checagem de divergência chama a VHSys (Brasil). Colocalizar
+// evita os timeouts de gateway que ocorrem quando chamada dos EUA (região default).
+export const preferredRegion = "gru1";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
