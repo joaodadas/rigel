@@ -68,6 +68,10 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 6): Promise<T> {
     } catch (error) {
       if (!(error instanceof VHSysTransientError)) throw error;
       lastError = error;
+      // Instrumentação: torna visível nos logs (Vercel) quantas retentativas cada
+      // página precisa — o /pedidos da VHSys é lento e o gateway deles falha de
+      // forma intermitente ("Erro ao comunicar com a API").
+      console.warn(`[vhsys-retry] tentativa ${i + 1}/${attempts} falhou: ${error.message}`);
       if (i < attempts - 1) await delay(Math.min(500 * 2 ** i, 4000));
     }
   }
