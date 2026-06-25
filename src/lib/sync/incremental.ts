@@ -12,6 +12,11 @@ import { TABLES_WITH_EMPRESA_PK, onConflictFor } from "@/lib/sync/multi-empresa"
 // ainda para limpo antes do kill seco da Vercel se algo sair muito do normal.
 const SOFT_DEADLINE_MS = 250_000;
 
+// Temporário: a VHSys bloqueia GET /pedidos do IP de datacenter da Vercel. Enquanto
+// não há fix de token/webhook, `pedidos` é sincronizado FORA da Vercel (worker local).
+// Para reativar na Vercel, remova "pedidos" deste set.
+const DISABLED_ENTITIES = new Set<string>(["pedidos"]);
+
 export interface StreamResult {
   synced: number;
   complete: boolean;
@@ -161,6 +166,10 @@ export async function runIncrementalSync(): Promise<Record<string, Record<string
 
     for (const entity of entitiesForEmpresa(empresa)) {
       if (deadlineHit) break;
+      if (DISABLED_ENTITIES.has(entity.name)) {
+        console.log(`[incremental:${empresa}] ${entity.name} desativado (bloqueado na Vercel) — sincronizado fora`);
+        continue;
+      }
       const start = Date.now();
 
       try {

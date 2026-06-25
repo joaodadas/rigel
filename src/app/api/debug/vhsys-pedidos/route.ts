@@ -1,36 +1,27 @@
-// DIAGNÓSTICO TEMPORÁRIO — descobrir o que destrava o /pedidos na Vercel.
-// Testa a matriz DOMÍNIO (.com vs .com.br) × USER-AGENT (Rigel/1.0 vs nenhum),
-// devolvendo a resposta crua da VHSys (status, headers, corpo). Lê os logs em
-// [debug-pedidos]. Remover depois.
+// DIAGNÓSTICO TEMPORÁRIO — confirmar se o bloqueio do /pedidos na Vercel é
+// específico do NOSSO token (rigel_fabricante) vs outro token da MESMA conta.
+// Domínio e User-Agent já foram descartados (ambos falham). Remover depois.
+//
+// Para a probe do token ALT: setar no Vercel as envs
+//   VHSYS_ALT_ACCESS_TOKEN / VHSYS_ALT_SECRET_ACCESS_TOKEN
+// (o token do outro sistema, mesma conta). Sem hardcode de segredo aqui.
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthorizedCron } from "@/lib/auth/cron";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-const DOM_COM = "https://api.vhsys.com/v2";
-const DOM_COMBR = "https://api.vhsys.com.br/v2";
-// Endpoint representativo do bloqueio (/pedidos foi o que falhou na Vercel).
-const PEDIDOS_PATH = "/pedidos?limit=250&offset=0";
+const BASE = "https://api.vhsys.com.br/v2"; // domínio é indiferente (já testado)
+const PEDIDOS = "/pedidos?limit=250&offset=0";
 
-async function probe(label: string, base: string, path: string, ua: string | null) {
-  const access = process.env.VHSYS_RIGEL_FABRICANTE_ACCESS_TOKEN;
-  const secret = process.env.VHSYS_RIGEL_FABRICANTE_SECRET_ACCESS_TOKEN;
-  const headers: Record<string, string> = {
-    "access-token": access ?? "",
-    "secret-access-token": secret ?? "",
-    "Content-Type": "application/json",
-  };
-  if (ua) headers["User-Agent"] = ua; // sem UA = não envia o header (igual ao rigelcontrol)
-
+async function probe(label: string, path: string, access?: string, secret?: string) {
+  if (!access || !secret) return { label, skipped: "token ausente (env não setada)" };
   const t0 = Date.now();
   try {
-    const res = await fetch(`${base}${path}`, { headers });
-    const latencyMs = Date.now() - t0;
-    const h: Record<string, string> = {};
-    res.headers.forEach((v, k) => {
-      h[k] = v;
+    const res = await fetch(`${BASE}${path}`, {
+      headers: { "access-token": access, "secret-access-token": secret, "Content-Type": "application/json" },
     });
+    const latencyMs = Date.now() - t0;
     const body = await res.text();
     let bodyCode: unknown;
     try {
@@ -43,9 +34,8 @@ async function probe(label: string, base: string, path: string, ua: string | nul
       httpStatus: res.status,
       bodyCode,
       latencyMs,
-      cfRay: h["cf-ray"],
-      server: h["server"],
-      bodyPreview: body.slice(0, 200),
+      cfRay: res.headers.get("cf-ray"),
+      bodyPreview: body.slice(0, 160),
     };
   } catch (e) {
     return { label, error: String(e), latencyMs: Date.now() - t0 };
@@ -59,14 +49,22 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const ours = {
+    a: process.env.VHSYS_RIGEL_FABRICANTE_ACCESS_TOKEN,
+    s: process.env.VHSYS_RIGEL_FABRICANTE_SECRET_ACCESS_TOKEN,
+  };
+  const alt = {
+    a: process.env.VHSYS_ALT_ACCESS_TOKEN,
+    s: process.env.VHSYS_ALT_SECRET_ACCESS_TOKEN,
+  };
+
   const results = [];
-  // Matriz domínio × User-Agent no /pedidos:
-  results.push(await probe("A .com.br + Rigel/1.0 (estado atual)", DOM_COMBR, PEDIDOS_PATH, "Rigel/1.0"));
-  results.push(await probe("B .com.br + SEM UA", DOM_COMBR, PEDIDOS_PATH, null));
-  results.push(await probe("C .com + Rigel/1.0", DOM_COM, PEDIDOS_PATH, "Rigel/1.0"));
-  results.push(await probe("D .com + SEM UA (estratégia do rigelcontrol)", DOM_COM, PEDIDOS_PATH, null));
-  // Controle: clientes no .com.br (funciona no cron normal)
-  results.push(await probe("E .com.br + clientes (controle)", DOM_COMBR, "/clientes?limit=1", "Rigel/1.0"));
+  // 1. NOSSO token no /pedidos (controle — deve dar code 404 / bloqueado)
+  results.push(await probe("1 NOSSO token + /pedidos", PEDIDOS, ours.a, ours.s));
+  // 2. Token ALT (outro app da MESMA conta) no /pedidos — O TESTE
+  results.push(await probe("2 ALT token + /pedidos (o teste)", PEDIDOS, alt.a, alt.s));
+  // 3. NOSSO token no /clientes (controle — deve funcionar, code 200)
+  results.push(await probe("3 NOSSO token + /clientes (controle ok)", "/clientes?limit=1", ours.a, ours.s));
 
   for (const r of results) {
     console.log("[debug-pedidos]", JSON.stringify(r));

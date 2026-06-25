@@ -35,6 +35,23 @@ export function prefetchNextPage(page: number, pageSize: number, search?: string
   );
 }
 
+/** Última vez que os pedidos foram sincronizados com sucesso (lê do sync_log).
+ *  Como o /pedidos é sincronizado FORA da Vercel (bloqueio de IP no datacenter),
+ *  isso mostra ao time quão fresca está a base de pedidos. Não cacheado (1 query leve). */
+export async function getPedidosLastSync(): Promise<string | null> {
+  const supabase = createSupabaseServer();
+  const { data } = await supabase
+    .from("sync_log")
+    .select("last_sync_at")
+    .eq("entity", "pedidos")
+    .eq("empresa", "rigel_fabricante")
+    .eq("status", "success")
+    .order("last_sync_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data?.last_sync_at as string | undefined) ?? null;
+}
+
 async function _fetchPedidos(
   page = 1,
   pageSize = 50,
