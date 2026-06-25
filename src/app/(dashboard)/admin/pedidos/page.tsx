@@ -1,7 +1,8 @@
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { getPedidos, prefetchNextPage } from "@/lib/queries/pedidos";
+import { getPedidos, prefetchNextPage, getPedidosLastSync } from "@/lib/queries/pedidos";
 import { PedidosTable } from "./pedidos-table";
+import { PedidosLastSync } from "./pedidos-last-sync";
 
 interface Props {
   searchParams: Promise<{ page?: string; search?: string; pageSize?: string }>;
@@ -19,7 +20,10 @@ export default async function PedidosPage({ searchParams }: Props) {
   const pageSize = Number(params.pageSize) || 50;
   const search = params.search || "";
 
-  const { data, total } = await getPedidos(page, pageSize, search || undefined);
+  const [{ data, total }, lastSync] = await Promise.all([
+    getPedidos(page, pageSize, search || undefined),
+    getPedidosLastSync(),
+  ]);
   if (data.length === pageSize) {
     prefetchNextPage(page, pageSize, search || undefined);
   }
@@ -31,6 +35,7 @@ export default async function PedidosPage({ searchParams }: Props) {
         <p className="mt-1 text-sm text-muted-foreground">
           Gerencie pedidos de venda
         </p>
+        <PedidosLastSync lastSync={lastSync} />
       </div>
       <PedidosTable data={data} total={total} page={page} pageSize={pageSize} search={search} />
     </div>
