@@ -14,8 +14,8 @@ const SOFT_DEADLINE_MS = 250_000;
 
 // Entidades a pular no incremental da Vercel. A VHSys bloqueia GET /pedidos do IP
 // de datacenter da Vercel — quando bloqueado, manter "pedidos" aqui (sincronizado
-// fora). Vazio = todas ativas (testando se liberaram).
-const DISABLED_ENTITIES = new Set<string>([]);
+// fora, via worker). Vazio = todas ativas (testando se liberaram).
+const DISABLED_ENTITIES = new Set<string>(["pedidos"]);
 
 export interface StreamResult {
   synced: number;
